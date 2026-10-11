@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dealership Brain — FalkorDB Company Brain (demo)</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#0f1420;color:#e8ecf4;margin:0;padding:0}
+  header{background:#161d2e;padding:14px 20px;border-bottom:1px solid #2a3550}
+  header h1{margin:0;font-size:18px} header p{margin:4px 0 0;color:#9aa7c2;font-size:12px}
+  #wrap{max-width:760px;margin:0 auto;padding:16px}
+  #chat{height:46vh;overflow-y:auto;background:#131a2b;border:1px solid #2a3550;border-radius:10px;padding:12px}
+  .msg{margin:8px 0;padding:8px 12px;border-radius:8px;max-width:85%}
+  .user{background:#243b63;margin-left:auto;text-align:right}
+  .bot{background:#1b2438}
+  .meta{font-size:11px;color:#8fa0c0;margin-top:4px}
+  #bar{display:flex;gap:8px;margin-top:10px}
+  input,button{font-size:14px;padding:10px;border-radius:8px;border:1px solid #2a3550}
+  input{background:#131a2b;color:#e8ecf4}
+  #phone{width:150px}#name{width:130px}#msg{flex:1}
+  button{background:#3b6fd4;color:#fff;border:none;cursor:pointer}
+  button:hover{background:#2f5cb8}
+  #trace{background:#0c1120;border:1px solid #2a3550;border-radius:10px;padding:10px;margin-top:12px;font-size:12px;color:#9aa7c2;white-space:pre-wrap}
+  .badge{display:inline-block;background:#22304d;border-radius:6px;padding:2px 8px;margin:2px;font-size:11px}
+  #demo-note{background:#2a2113;border:1px solid #6b551f;color:#e8c96a;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧠 Dealership Brain <span class="badge">FalkorDB Company Brain</span></h1>
+  <p>Multi-agent support brain for a car dealership — memory, knowledge &amp; actions all live in the graph.</p>
+</header>
+<div id="wrap">
+  <div id="demo-note">⚠️ DEMO DATA: dealership "Velocity Motors" and all customers, vehicles &amp; tickets are <b>fictional</b> (see <code>app/seed.py</code>).</div>
+  <div id="chat"></div>
+  <div id="bar">
+    <input id="phone" placeholder="phone e.g. +923001111111" value="+923001111111">
+    <input id="name" placeholder="your name" value="Ahmed Raza">
+    <input id="msg" placeholder="Type a message…" onkeydown="if(event.key==='Enter')send()">
+    <button onclick="send()">Send</button>
+  </div>
+  <div style="margin-top:8px">
+    <button onclick="churn()">📊 Churn-risk report (manager view)</button>
+    <button onclick="stats()">🕸️ Graph stats</button>
+    <button onclick="reseed()">🔄 Reset demo data</button>
+  </div>
+  <div id="trace">Agent trace will appear here…</div>
+</div>
+<script>
+const chat=document.getElementById('chat'), trace=document.getElementById('trace');
+function add(cls,html,meta){const d=document.createElement('div');d.className='msg '+cls;d.innerHTML=html+(meta?`<div class="meta">${meta}</div>`:'');chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
+async function send(){
+  const phone=document.getElementById('phone').value, name=document.getElementById('name').value,
+        message=document.getElementById('msg').value;
+  if(!message.trim())return; document.getElementById('msg').value='';
+  add('user',message);
+  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({phone,name,message})});
+  const j=await r.json();
+  add('bot',j.reply.replace(/\n/g,'<br>'),
+      `agent: ${j.agent} · intent: ${j.intent} · llm: ${j.llm_provider} · returning: ${j.returning_customer}`);
+  trace.textContent='TRACE\n'+JSON.stringify({intent:j.intent,agent:j.agent,llm_provider:j.llm_provider,
+    context_used:j.context_used,actions_taken:j.actions_taken},null,2);
+}
+async function churn(){
+  const r=await fetch('/api/churn');const j=await r.json();
+  trace.textContent='CHURN RISK (agent acts on connected data)\n'+JSON.stringify(j,null,2);
+  add('bot','📊 <b>Churn-risk report:</b> '+j.count+' customer(s) with unresolved HIGH-priority tickets.'+
+    (j.at_risk.length?'<br>'+j.at_risk.map(c=>`${c.name} (${c.phone}) — ${c.open_tickets} open ticket(s)`).join('<br>'):''));
+}
+async function stats(){
+  const r=await fetch('/api/graph/stats');const j=await r.json();
+  trace.textContent='GRAPH STATS (live Cypher counts)\n'+JSON.stringify(j,null,2);
+}
+async function reseed(){
+  await fetch('/api/seed',{method:'POST'});
+  add('bot','Demo data reset. All fictional.');
+}
+add('bot','Welcome to <b>Velocity Motors</b>! I remember our customers across visits. Try:<br>• "I want a car under 30 lakh"<br>• "my service is delayed"<br>• "what is your warranty policy?"<br>Then change the phone number to see a <i>new</i> customer with no memory.');
+</script>
+</body>
+</html>
