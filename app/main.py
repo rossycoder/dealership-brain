@@ -47,19 +47,42 @@ def index():
 
 @app.get("/api/status")
 def status():
-    _, mode = G.get_graph()
-    return {
-        "falkordb_mode": mode,          # embedded | external — always a real engine
-        "graph": G.GRAPH_NAME,
-        "llm_provider": llm.provider_name(),
-        "demo_data": True,
-        "demo_data_note": "All customers, vehicles, tickets are FICTIONAL (app/seed.py).",
-    }
+    try:
+        _, mode = G.get_graph()
+        return {
+            "falkordb_mode": mode,          # embedded | external — always a real engine
+            "graph": G.GRAPH_NAME,
+            "llm_provider": llm.provider_name(),
+            "demo_data": True,
+            "demo_data_note": "All customers, vehicles, tickets are FICTIONAL (app/seed.py).",
+        }
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "Graph database unavailable",
+                "detail": G.get_last_error(),
+                "hint": "Set FALKOR_HOST/FALKOR_PORT/FALKOR_PASSWORD env vars to use an external FalkorDB.",
+            },
+        )
+
+
+def _need_graph():
+    """Return graph or raise HTTP 503 with diagnostics (never crash the function)."""
+    from fastapi import HTTPException
+    try:
+        graph, _ = G.get_graph()
+        return graph
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Graph database unavailable", "diagnostic": G.get_last_error()},
+        )
 
 
 @app.post("/api/chat")
 def chat(body: ChatIn):
-    graph, _ = G.get_graph()
+    graph = _need_graph()
     result = agents.handle_message(graph, body.phone.strip(),
                                    body.name.strip(), body.message.strip())
     return JSONResponse(result)
@@ -67,13 +90,13 @@ def chat(body: ChatIn):
 
 @app.get("/api/churn")
 def churn():
-    graph, _ = G.get_graph()
+    graph = _need_graph()
     return JSONResponse(agents.churn_report(graph))
 
 
 @app.get("/api/graph/stats")
 def graph_stats():
-    graph, _ = G.get_graph()
+    graph = _need_graph()
     res = graph.query("MATCH (n) RETURN labels(n)[0] AS label, count(n) AS c ORDER BY label")
     return {"counts": {r[0]: r[1] for r in res.result_set}}
 

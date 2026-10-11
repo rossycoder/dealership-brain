@@ -9,25 +9,44 @@ Two modes:
 Both modes run REAL Cypher against a REAL FalkorDB engine. Nothing is faked.
 """
 import os
+import traceback
 
 GRAPH_NAME = "dealership_brain"
 
+# Last graph initialization error (for diagnostics via /api/status)
+_last_error = None
+
+
+def get_last_error():
+    return _last_error
+
 
 def get_db():
+    global _last_error
     host = os.environ.get("FALKOR_HOST")
     if host:
-        from falkordb import FalkorDB
-        port = int(os.environ.get("FALKOR_PORT", "6379"))
-        password = os.environ.get("FALKOR_PASSWORD") or None
-        db = FalkorDB(host=host, port=port, password=password)
-        return db, "external"
-    from redislite import FalkorDB
-    # Persistent file so seed data survives across processes/restarts.
-    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = os.environ.get("FALKOR_DATA_DIR", os.path.join(here, "falkordb-data"))
-    os.makedirs(data_dir, exist_ok=True)
-    db = FalkorDB(os.path.join(data_dir, "brain.db"))
-    return db, "embedded"
+        try:
+            from falkordb import FalkorDB
+            port = int(os.environ.get("FALKOR_PORT", "6379"))
+            password = os.environ.get("FALKOR_PASSWORD") or None
+            db = FalkorDB(host=host, port=port, password=password)
+            _last_error = None
+            return db, "external"
+        except Exception as e:
+            _last_error = f"External FalkorDB failed: {type(e).__name__}: {e}\n{traceback.format_exc()[-2000:]}"
+            raise RuntimeError(_last_error)
+    try:
+        from redislite import FalkorDB
+        # Persistent file so seed data survives across processes/restarts.
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        data_dir = os.environ.get("FALKOR_DATA_DIR", os.path.join(here, "falkordb-data"))
+        os.makedirs(data_dir, exist_ok=True)
+        db = FalkorDB(os.path.join(data_dir, "brain.db"))
+        _last_error = None
+        return db, "embedded"
+    except Exception as e:
+        _last_error = f"Embedded FalkorDB (redislite) failed: {type(e).__name__}: {e}\n{traceback.format_exc()[-2000:]}"
+        raise RuntimeError(_last_error)
 
 
 _seeded_this_process = False
@@ -43,7 +62,14 @@ def get_graph(auto_seed=True):
     avoid re-entry.
     """
     global _seeded_this_process
-    db, mode = get_db()
+    try:
+        db, mode = get_db()
+    except RuntimeError:
+        raise  # _last_error already set with details
+    except Exception as e:
+        global _last_error
+        _last_error = f"get_db unexpected: {type(e).__name__}: {e}"
+        raise RuntimeError(_last_error)
     graph = db.select_graph(GRAPH_NAME)
     # Lazy schema ensure: idempotent, and guarantees indexes exist even when
     # the FastAPI startup event never runs (e.g. Mangum/lifespan="off" on Vercel).
