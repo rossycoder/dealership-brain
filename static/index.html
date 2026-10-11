@@ -1,279 +1,365 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dealership Brain — AI Company Brain</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockSentry — AI Replenishment Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#070b16; --bg2:#0b1120;
-  --panel:rgba(255,255,255,.035); --panel2:rgba(255,255,255,.06);
-  --line:rgba(255,255,255,.09);
-  --txt:#eef2ff; --dim:#8b94b3; --faint:#5b6484;
-  --vio:#8b5cf6; --cy:#22d3ee; --grad:linear-gradient(135deg,#8b5cf6,#22d3ee);
-  --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
-  --r:16px;
+  --bg:#0b0d12; --panel:rgba(255,255,255,.035); --panel2:rgba(255,255,255,.06);
+  --line:rgba(255,255,255,.09); --txt:#f5f3ee; --dim:#9aa0ae; --faint:#626878;
+  --amb:#f59e0b; --org:#f97316; --grad:linear-gradient(135deg,#f59e0b,#f97316);
+  --crit:#ff6b6b; --high:#ffa94d; --med:#ffd43b; --low:#69db7c; --ok:#69db7c;
+  --r:18px;
 }
 *{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0; font-family:'Inter',system-ui,sans-serif; color:var(--txt);
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:var(--txt);min-height:100vh;
   background:
-    radial-gradient(900px 500px at 15% -5%, rgba(139,92,246,.14), transparent 60%),
-    radial-gradient(800px 500px at 90% 0%, rgba(34,211,238,.10), transparent 60%),
-    var(--bg);
-  min-height:100vh;
-}
+    radial-gradient(1000px 540px at 12% -5%, rgba(245,158,11,.12), transparent 60%),
+    radial-gradient(900px 520px at 95% 5%, rgba(249,115,22,.09), transparent 60%),
+    var(--bg);}
 h1,h2,h3,.sg{font-family:'Space Grotesk',sans-serif}
-.wrap{max-width:1240px;margin:0 auto;padding:22px 20px 40px}
-/* ---------- header ---------- */
-.top{display:flex;align-items:center;gap:16px;padding:18px 22px;border:1px solid var(--line);
-  border-radius:20px;background:var(--panel);backdrop-filter:blur(12px);
-  animation:rise .6s ease both}
-.logo{width:52px;height:52px;border-radius:16px;background:var(--grad);display:grid;place-items:center;flex:none;
-  box-shadow:0 8px 30px rgba(139,92,246,.35)}
+.wrap{max-width:1140px;margin:0 auto;padding:24px 20px 48px}
+/* header */
+.top{display:flex;align-items:center;gap:16px;padding:20px 24px;border:1px solid var(--line);border-radius:22px;
+  background:var(--panel);backdrop-filter:blur(14px);animation:rise .6s ease both}
+.logo{width:54px;height:54px;border-radius:17px;background:var(--grad);display:grid;place-items:center;flex:none;
+  box-shadow:0 8px 32px rgba(245,158,11,.35)}
 .logo svg{width:28px;height:28px}
-.top h1{margin:0;font-size:22px;letter-spacing:.2px}
-.top p{margin:4px 0 0;color:var(--dim);font-size:13.5px}
-.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:999px;
-  background:rgba(139,92,246,.14);border:1px solid rgba(139,92,246,.4);color:#c4b5fd;margin-left:10px;vertical-align:2px}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pulse 2s infinite}
-.status{margin-left:auto;display:flex;gap:10px;align-items:center;font-size:12px;color:var(--dim)}
-.status b{color:var(--txt)}
-/* ---------- demo banner ---------- */
-.demo{margin:14px 0 0;padding:11px 16px;border-radius:14px;font-size:12.5px;color:#fcd34d;
-  background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.25);animation:rise .6s .08s ease both}
-/* ---------- layout ---------- */
-.grid{display:grid;grid-template-columns:1.65fr 1fr;gap:16px;margin-top:16px}
-@media(max-width:960px){.grid{grid-template-columns:1fr}}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);backdrop-filter:blur(12px);
-  animation:rise .6s .12s ease both;overflow:hidden}
-.card-h{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
-.card-h h3{margin:0;font-size:14px;letter-spacing:.4px;text-transform:uppercase;color:var(--dim)}
-.card-h h3 .sg{color:var(--txt)}
-/* ---------- chat ---------- */
-#chat{height:430px;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
-#chat::-webkit-scrollbar,.scroll::-webkit-scrollbar{width:8px}
-#chat::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
-.msg{max-width:82%;padding:11px 15px;border-radius:15px;font-size:14px;line-height:1.55;animation:pop .3s ease both;word-wrap:break-word}
-.msg.user{align-self:flex-end;background:var(--grad);color:#fff;border-bottom-right-radius:5px;
-  box-shadow:0 6px 20px rgba(139,92,246,.25)}
-.msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:5px}
-.msg .who{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px;opacity:.85}
-.msg.bot .who{color:var(--cy)} .msg.user .who{color:rgba(255,255,255,.85)}
-.meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.tag{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:rgba(34,211,238,.1);
-  border:1px solid rgba(34,211,238,.3);color:#a5f3fc}
-.tag.v{background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.35);color:#c4b5fd}
-.tag.g{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.3);color:#a7f3d0}
-/* typing */
-.typing{display:inline-flex;gap:5px;padding:14px 18px}
-.typing span{width:7px;height:7px;border-radius:50%;background:var(--cy);animation:tp 1.2s infinite}
-.typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
-/* chips */
-.chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 18px 6px}
-.chip{font-size:12.5px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);
-  color:var(--dim);cursor:pointer;transition:.2s}
-.chip:hover{border-color:var(--vio);color:var(--txt);transform:translateY(-1px)}
-/* composer */
-.composer{padding:14px 18px 18px;border-top:1px solid var(--line);background:rgba(0,0,0,.15)}
-.idrow{display:flex;gap:10px;margin-bottom:10px}
-.field{flex:1;position:relative}
-.field label{position:absolute;top:-8px;left:12px;font-size:10px;font-weight:700;letter-spacing:.5px;
-  background:#0d1426;padding:0 6px;color:var(--faint);text-transform:uppercase}
-.field input{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;
-  color:var(--txt);padding:11px 14px;font-size:13.5px;font-family:inherit;outline:none;transition:.2s}
-.field input:focus{border-color:var(--vio);box-shadow:0 0 0 3px rgba(139,92,246,.18)}
-.sendrow{display:flex;gap:10px}
-#msg{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:14px;color:var(--txt);
-  padding:13px 16px;font-size:14.5px;font-family:inherit;outline:none;transition:.2s}
-#msg:focus{border-color:var(--vio);box-shadow:0 0 0 3px rgba(139,92,246,.18)}
-.btn{background:var(--grad);border:none;color:#fff;font-weight:700;font-size:14px;padding:13px 26px;border-radius:14px;
-  cursor:pointer;font-family:'Space Grotesk';letter-spacing:.3px;transition:.2s;box-shadow:0 6px 22px rgba(139,92,246,.35)}
-.btn:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(139,92,246,.45)}
-.btn:active{transform:translateY(0)}
-.btn:disabled{opacity:.6;cursor:wait;transform:none}
-.btn.ghost{background:var(--panel2);border:1px solid var(--line);box-shadow:none;color:var(--txt);padding:10px 16px;font-size:13px}
-.btn.ghost:hover{border-color:var(--vio)}
-/* ---------- sidebar ---------- */
-.side{display:flex;flex-direction:column;gap:16px}
-.tools{padding:16px 18px;display:flex;flex-direction:column;gap:10px;animation:rise .6s .18s ease both}
-.tools .btn.ghost{width:100%;text-align:left;display:flex;align-items:center;gap:10px}
-.tools .btn.ghost svg{flex:none}
-.tabs{display:flex;gap:6px;padding:12px 14px 0}
-.tab{flex:1;text-align:center;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);
-  padding:10px 4px;cursor:pointer;border-bottom:2px solid transparent;transition:.2s}
-.tab.on{color:var(--txt);border-color:var(--cy)}
-.pane{padding:14px 18px 18px;max-height:330px;overflow-y:auto;display:none}
-.pane.on{display:block;animation:fade .3s ease}
-pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:11.5px;
-  line-height:1.6;color:#a5b4fc;white-space:pre-wrap;word-break:break-word;margin:0;font-family:ui-monospace,Menlo,monospace}
-.kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed rgba(255,255,255,.08);font-size:13px}
-.kv:last-child{border:none}.kv b{color:var(--txt)} .kv span{color:var(--dim)}
-.riskrow{padding:10px 12px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.06);border-radius:12px;margin-bottom:8px;font-size:13px}
-.riskrow b{color:#fca5a5}
-/* ---------- toast ---------- */
+.top h1{margin:0;font-size:24px}.top h1 span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.top p{margin:5px 0 0;color:var(--dim);font-size:13px}
+.badge{margin-left:auto;flex:none;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  padding:8px 15px;border-radius:999px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:#fcd34d}
+/* upload card */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px 24px;margin-top:16px;animation:rise .6s .08s ease both}
+.card h3{margin:0 0 4px;font-size:16px}
+.card .sub2{color:var(--dim);font-size:13px;margin-bottom:14px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.btn{background:var(--grad);border:none;color:#1a1005;font-weight:800;font-size:14.5px;padding:13px 26px;border-radius:13px;
+  cursor:pointer;font-family:'Space Grotesk';transition:.2s;box-shadow:0 8px 26px rgba(245,158,11,.3)}
+.btn:hover{transform:translateY(-1px)}.btn:disabled{opacity:.55;cursor:wait;transform:none}
+.btn.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--txt);box-shadow:none}
+.btn.ghost:hover{border-color:var(--amb)}
+.hint{color:var(--dim);font-size:12.5px;margin-top:10px}
+.hint code{background:rgba(0,0,0,.35);padding:2px 7px;border-radius:6px;font-size:12px}
+.dl{color:var(--dim);font-size:13px;text-decoration:underline dotted;cursor:pointer}
+.dl:hover{color:var(--txt)}
+.err{color:var(--crit);font-size:13.5px;margin-top:10px;display:none}
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;position:relative;overflow:hidden;animation:pop .4s ease both}
+.kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--kc,var(--amb));opacity:.8}
+.kpi .v{font-family:'Space Grotesk';font-size:30px;font-weight:700}
+.kpi .l{font-size:12px;color:var(--dim);margin-top:5px}
+/* table */
+.tblwrap{overflow-x:auto;margin-top:6px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:760px}
+th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{color:var(--dim);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px}
+tbody tr{transition:.15s}tbody tr:hover{background:rgba(255,255,255,.025)}
+.pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.4px}
+.CRITICAL{background:rgba(255,107,107,.14);color:var(--crit);border:1px solid rgba(255,107,107,.4)}
+.HIGH{background:rgba(255,169,77,.13);color:var(--high);border:1px solid rgba(255,169,77,.4)}
+.MEDIUM{background:rgba(255,212,59,.12);color:var(--med);border:1px solid rgba(255,212,59,.35)}
+.LOW,.OK{background:rgba(105,219,124,.1);color:var(--low);border:1px solid rgba(105,219,124,.3)}
+.daysbar{height:6px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;margin-top:5px;min-width:90px}
+.daysbar>div{height:100%;border-radius:4px;transition:width .6s ease}
+code.sku{background:rgba(0,0,0,.4);padding:3px 8px;border-radius:7px;font-size:12px;border:1px solid var(--line)}
+.why{color:var(--dim);font-size:12.5px;max-width:320px;line-height:1.5}
+/* risk radar chart */
+.chartcard{position:relative;overflow:hidden}
+.chartcard::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad);opacity:.9}
+.chartwrap{position:relative;margin-top:8px}
+#riskChart{display:block;width:100%;cursor:crosshair}
+.chtip{position:absolute;pointer-events:none;background:#0f1420;border:1px solid rgba(245,158,11,.45);border-radius:10px;
+  padding:10px 12px;font-size:12.5px;line-height:1.6;display:none;z-index:5;max-width:260px;
+  box-shadow:0 10px 28px rgba(0,0,0,.55)}
+.chtip b{color:#fcd34d}.chtip .tk{color:var(--dim)}
+.chartempty{display:none;color:var(--dim);font-size:13.5px;text-align:center;padding:28px 0;
+  border:1px dashed var(--line);border-radius:12px;margin-top:8px}
+.legend{display:flex;gap:12px;font-size:11.5px;color:var(--dim);font-weight:600;letter-spacing:.3px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* narrative */
+#narrCard{display:none}
+#narrative{white-space:pre-wrap;line-height:1.7;font-size:14.5px;background:rgba(245,158,11,.05);
+  border:1px solid rgba(245,158,11,.22);border-radius:14px;padding:18px 20px}
+.provtag{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--amb)}
+/* Q&A */
+.qa{display:flex;gap:10px;margin-top:6px}
+.qa input{flex:1;background:rgba(0,0,0,.3);border:1px solid var(--line);color:var(--txt);border-radius:13px;
+  padding:13px 16px;font-size:14px;font-family:inherit;outline:none}
+.qa input:focus{border-color:var(--amb);box-shadow:0 0 0 3px rgba(245,158,11,.15)}
+#answer{margin-top:12px;padding:16px 18px;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:14px;
+  line-height:1.65;font-size:14px;display:none}
+.cites{margin-top:8px;font-size:12px;color:var(--dim)}
+.cites code{background:rgba(0,0,0,.4);padding:2px 7px;border-radius:6px;margin-right:5px}
+/* misc */
+details{margin-top:14px}summary{cursor:pointer;color:var(--dim);font-size:13.5px}
+details p{color:var(--dim);font-size:13.5px;line-height:1.7}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#1e293b;
-  border:1px solid var(--bad);color:#fecaca;padding:12px 20px;border-radius:14px;font-size:13.5px;opacity:0;
-  pointer-events:none;transition:.3s;z-index:99;max-width:90vw}
+  border:1px solid var(--crit);color:#fecaca;padding:12px 20px;border-radius:14px;font-size:13.5px;opacity:0;
+  pointer-events:none;transition:.3s;z-index:99;max-width:92vw}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-/* ---------- anims ---------- */
+.spin{width:16px;height:16px;border:2px solid rgba(0,0,0,.25);border-top-color:#1a1005;border-radius:50%;
+  display:inline-block;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:8px}
+.spin.lt{border-color:rgba(255,255,255,.25);border-top-color:#fff}
 @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-@keyframes pop{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:none}}
-@keyframes fade{from{opacity:0}to{opacity:1}}
-@keyframes tp{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-5px);opacity:1}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;
-  display:inline-block;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:8px}
+@keyframes pop{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
 @keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="logo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
-    </div>
-    <div>
-      <h1>Dealership Brain <span class="pill"><span class="dot"></span> FalkorDB Company Brain</span></h1>
-      <p>Multi-agent support brain for a car dealership — memory, knowledge &amp; actions, all living in the graph.</p>
-    </div>
-    <div class="status" id="sysStatus"><span class="dot"></span><span>connecting…</span></div>
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#1a1005" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+    <div><h1>Stock<span>Sentry</span></h1>
+      <p>AI replenishment desk for small retail shops — upload inventory, get your reorder battle-plan in seconds.</p></div>
+    <div class="badge" id="aiBadge">engine ready</div>
   </div>
 
-  <div class="demo">Demo data notice — dealership “Velocity Motors” and every customer, vehicle &amp; ticket shown here are <b>fictional</b> (see <code>app/seed.py</code>). The graph engine and agent logic are 100% real.</div>
+  <div class="card">
+    <h3>Load inventory</h3>
+    <div class="sub2">One click for the demo shop, or bring your own CSV.</div>
+    <div class="row">
+      <button class="btn" id="demoBtn" onclick="loadDemo()">⚡ Analyze demo shop</button>
+      <button class="btn ghost" onclick="document.getElementById('csvFile').click()">Upload CSV</button>
+      <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="uploadCSV(this)">
+      <a class="dl" href="/api/sample.csv">download demo CSV</a>
+    </div>
+    <div class="hint">Columns: <code>sku, product_name, on_hand, avg_daily_sales, lead_time_days</code> + optional <code>category, unit_cost</code> · max 5,000 rows</div>
+    <div class="err" id="err"></div>
+  </div>
 
-  <div class="grid">
-    <!-- CHAT -->
+  <div id="results" style="display:none">
+    <div class="kpis">
+      <div class="kpi" style="--kc:#5aa2ff;animation-delay:.02s"><div class="v" id="kItems">–</div><div class="l">SKUs analyzed</div></div>
+      <div class="kpi" style="--kc:var(--crit);animation-delay:.08s"><div class="v" id="kCrit" style="color:var(--crit)">–</div><div class="l">Critical — order today</div></div>
+      <div class="kpi" style="--kc:var(--high);animation-delay:.14s"><div class="v" id="kHigh" style="color:var(--high)">–</div><div class="l">High risk</div></div>
+      <div class="kpi" style="--kc:var(--amb);animation-delay:.2s"><div class="v" id="kVal">–</div><div class="l">Inventory value at risk</div></div>
+    </div>
+
+    <div class="card chartcard">
+      <div class="row" style="justify-content:space-between;margin-bottom:4px">
+        <h3 style="margin:0">🔥 Risk Radar <span class="sub2" style="margin:0">top 10 at-risk SKUs</span></h3>
+        <div class="legend">
+          <span><i style="background:#ef4444"></i>CRITICAL</span>
+          <span><i style="background:#f97316"></i>HIGH</span>
+          <span><i style="background:#eab308"></i>MEDIUM</span>
+          <span><i style="background:#22c55e"></i>LOW/OK</span>
+        </div>
+      </div>
+      <div class="chartwrap" id="chartWrap">
+        <canvas id="riskChart"></canvas>
+        <div class="chtip" id="chartTip"></div>
+      </div>
+      <div class="chartempty" id="chartEmpty">No data — run an analysis first.</div>
+    </div>
+
     <div class="card">
-      <div class="card-h"><h3><span class="sg">Customer</span> chat</h3></div>
-      <div id="chat"></div>
-      <div class="chips" id="chips"></div>
-      <div class="composer">
-        <div class="idrow">
-          <div class="field"><label>Phone (identity)</label><input id="phone" value="+923001111111"></div>
-          <div class="field"><label>Name</label><input id="name" value="Ahmed Raza"></div>
-        </div>
-        <div class="sendrow">
-          <input id="msg" placeholder="Type a message as the customer…" autocomplete="off">
-          <button class="btn" id="sendBtn" onclick="send()">Send</button>
-        </div>
+      <div class="row" style="justify-content:space-between;margin-bottom:6px">
+        <h3 style="margin:0">Reorder priority <span class="provtag" id="dataBadge" style="margin-left:8px"></span></h3>
+        <button class="btn ghost" id="narrBtn" onclick="narrate()">✨ AI briefing</button>
       </div>
+      <div class="tblwrap"><table><thead><tr>
+        <th>SKU</th><th>Product</th><th>On hand</th><th>Days of stock</th><th>Risk</th><th>Suggested order</th><th>Why</th>
+      </tr></thead><tbody id="tbl"></tbody></table></div>
     </div>
 
-    <!-- SIDEBAR -->
-    <div class="side">
-      <div class="card tools">
-        <div class="card-h" style="border:none;padding:0 0 4px"><h3><span class="sg">Manager</span> tools</h3></div>
-        <button class="btn ghost" onclick="showChurn()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-6 4 3 5-8"/></svg>Churn-risk report</button>
-        <button class="btn ghost" onclick="showStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.5 8.5l7 7M18 6a3 3 0 100-6"/></svg>Graph stats <span style="color:var(--faint);font-size:11px">(live Cypher)</span></button>
-        <button class="btn ghost" onclick="reseed()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-2.6-6.4M21 4v5h-5"/></svg>Reset demo data</button>
-      </div>
-      <div class="card">
-        <div class="tabs">
-          <div class="tab on" onclick="tab('trace',this)">Trace</div>
-          <div class="tab" onclick="tab('churn',this)">Churn</div>
-          <div class="tab" onclick="tab('graph',this)">Graph</div>
-        </div>
-        <div class="pane on scroll" id="pane-trace"><pre class="trace" id="trace">Agent trace appears here after your first message…</pre></div>
-        <div class="pane scroll" id="pane-churn"><div id="churnBody" style="color:var(--dim);font-size:13px">Run the churn-risk report to see customers the graph flags.</div></div>
-        <div class="pane scroll" id="pane-graph"><div id="graphBody" style="color:var(--dim);font-size:13px">Run “Graph stats” to query live node counts.</div></div>
-      </div>
+    <div class="card" id="narrCard">
+      <h3>AI briefing <span class="provtag" id="narrProv" style="margin-left:8px"></span></h3>
+      <div id="narrative"></div>
     </div>
+
+    <div class="card">
+      <h3>Ask about your stock</h3>
+      <div class="qa">
+        <input id="q" placeholder='e.g. "Which SKUs are critical?" or "tell me about SKU SNK-201"' onkeydown="if(event.key==='Enter')ask()">
+        <button class="btn" id="askBtn" onclick="ask()">Ask</button>
+      </div>
+      <div id="answer"></div>
+      <div class="hint">Try: “what should I reorder first?” · “total inventory value?” · “which SKUs are healthy?”</div>
+    </div>
+
+    <details><summary>How the risk score is computed</summary>
+      <p>days_of_stock = on_hand ÷ avg_daily_sales · reorder_point = daily_sales × lead_time × 1.25 ·
+      risk from coverage ÷ lead time: &lt;0.5× → CRITICAL, &lt;1× → HIGH, &lt;2× → MEDIUM, &lt;4× → LOW, else OK.
+      Suggested order tops stock up to 30 days of cover. Zero-velocity items are flagged honestly, never scored.</p>
+    </details>
   </div>
 </div>
 <div id="toast"></div>
 
 <script>
+let lastRows=null,isDemo=false;
 const $=id=>document.getElementById(id);
-const chat=$('chat'), traceEl=$('trace');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),3800);}
-function tab(name,el){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));el.classList.add('on');
-  document.querySelectorAll('.pane').forEach(x=>x.classList.remove('on'));$('pane-'+name).classList.add('on');}
-function goTab(name){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.textContent.toLowerCase()===name));
-  document.querySelectorAll('.pane').forEach(x=>x.classList.toggle('on',x.id==='pane-'+name));}
-
-function addMsg(cls,who,html,tags){
-  const d=document.createElement('div');d.className='msg '+cls;
-  d.innerHTML=`<div class="who">${who}</div><div>${html}</div>`+
-    (tags&&tags.length?`<div class="meta">${tags.map(t=>`<span class="tag ${t.c||''}">${esc(t.t)}</span>`).join('')}</div>`:'');
-  chat.appendChild(d);chat.scrollTop=chat.scrollHeight;return d;
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),3800);}
+function setErr(m){const e=$('err');e.textContent=m||'';e.style.display=m?'block':'none';}
+const RISKCOL={CRITICAL:'#ff6b6b',HIGH:'#ffa94d',MEDIUM:'#ffd43b',LOW:'#69db7c',OK:'#69db7c'};
+/* ---- Risk Radar chart (vanilla canvas, dependency-free) ---- */
+const CHARTCOL={CRITICAL:'#ef4444',HIGH:'#f97316',MEDIUM:'#eab308',LOW:'#22c55e',OK:'#22c55e'};
+function chartColor(it){
+  if(it.risk_level&&CHARTCOL[it.risk_level])return CHARTCOL[it.risk_level];
+  const s=+it.risk_score||0; // fallback to score thresholds when level is missing
+  return s>=80?'#ef4444':s>=60?'#f97316':s>=40?'#eab308':'#22c55e';
 }
-function typing(){const d=document.createElement('div');d.className='msg bot';d.id='typing';
-  d.innerHTML='<div class="typing"><span></span><span></span><span></span></div>';chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
-function untype(){const t=$('typing');if(t)t.remove();}
+let chartItems=[],chartBars=[],chartAnim=null;
+function drawRiskChart(items,animate=true){
+  const cv=$('riskChart'),wrap=$('chartWrap'),empty=$('chartEmpty'),tip=$('chartTip');
+  if(chartAnim){cancelAnimationFrame(chartAnim);chartAnim=null;}
+  tip.style.display='none';chartBars=[];
+  if(!items||!items.length){wrap.style.display='none';empty.style.display='block';chartItems=[];return;}
+  wrap.style.display='block';empty.style.display='none';
+  chartItems=[...items].sort((a,b)=>(+b.risk_score||0)-(+a.risk_score||0)).slice(0,10); // fewer than 10 → chart what's there
+  const W=wrap.clientWidth;if(!W)return; // guard: hidden container
+  const dpr=window.devicePixelRatio||1;
+  const padL=2,padR=2,rowH=46,padT=6,padB=8,barH=14;
+  const H=padT+chartItems.length*rowH+padB;
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);cv.style.height=H+'px';
+  const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+  chartBars=chartItems.map((it,i)=>{
+    const score=Math.max(0,Math.min(100,+it.risk_score||0));
+    return {it,y:padT+i*rowH,score,target:(W-padL-padR)*(score/100)};
+  });
+  function truncate(t,maxW){
+    if(ctx.measureText(t).width<=maxW)return t;
+    let s=t;while(s.length>1&&ctx.measureText(s+'…').width>maxW)s=s.slice(0,-1);
+    return s+'…';
+  }
+  function paint(p){
+    ctx.clearRect(0,0,W,H);
+    chartBars.forEach(b=>{
+      const col=chartColor(b.it);
+      const ty=b.y,tx=padL,tw=W-padL-padR;
+      // label row: product name left, score right
+      ctx.font='600 12px Inter,system-ui,sans-serif';ctx.textBaseline='alphabetic';
+      ctx.fillStyle='#f5f3ee';
+      const sw=ctx.measureText(b.score.toFixed(1)).width+4;
+      ctx.fillText(truncate(b.it.product_name||b.it.sku||'—',tw-sw-10),tx,ty+13);
+      ctx.font='800 12.5px "Space Grotesk",Inter,sans-serif';ctx.fillStyle=col;
+      ctx.fillText(b.score.toFixed(1),tx+tw-sw+4,ty+13);
+      // track + animated bar
+      const by=ty+20,bw=b.target*p;
+      ctx.fillStyle='rgba(255,255,255,.07)';
+      ctx.beginPath();ctx.roundRect(tx,by,tw,barH,7);ctx.fill();
+      if(bw>0.5){
+        const g=ctx.createLinearGradient(tx,0,tx+tw,0);
+        g.addColorStop(0,col);g.addColorStop(1,col+'b3');
+        ctx.fillStyle=g;
+        ctx.beginPath();ctx.roundRect(tx,by,Math.min(bw,tw),barH,7);ctx.fill();
+      }
+    });
+  }
+  if(!animate){paint(1);return;}
+  const t0=performance.now(),dur=750;
+  (function frame(t){
+    const pr=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-pr,3);
+    paint(e);if(pr<1)chartAnim=requestAnimationFrame(frame);else chartAnim=null;
+  })(t0);
+}
+function chartHover(e){
+  const cv=$('riskChart'),wrap=$('chartWrap'),tip=$('chartTip');
+  if(!chartBars.length){tip.style.display='none';return;}
+  const r=cv.getBoundingClientRect();
+  const x=e.clientX-r.left,y=e.clientY-r.top;
+  const hit=chartBars.find(b=>y>=b.y+18&&y<=b.y+36&&x>=0&&x<=r.width);
+  if(!hit){tip.style.display='none';return;}
+  const it=hit.it,dl=it.days_of_stock;
+  tip.innerHTML=`<b>${esc(it.sku)}</b> · ${esc(it.product_name)}<br>`+
+    `<span class="tk">Days of stock:</span> ${dl===null||dl===undefined?'—':dl}<br>`+
+    `<span class="tk">Suggested order:</span> ${Math.round(+it.suggested_order_qty||0)} units<br>`+
+    `<span class="tk">Risk:</span> ${esc(it.risk_level||'—')} (${(+it.risk_score||0).toFixed(1)})`;
+  tip.style.display='block';
+  const wr=wrap.getBoundingClientRect();
+  let lx=e.clientX-wr.left+14,ly=e.clientY-wr.top+14;
+  if(lx+270>wr.width)lx=e.clientX-wr.left-270;
+  tip.style.left=Math.max(4,lx)+'px';tip.style.top=Math.max(4,ly)+'px';
+}
 
-async function send(){
-  const phone=$('phone').value.trim(),name=$('name').value.trim(),message=$('msg').value.trim();
-  if(!message)return;
-  $('msg').value='';$('sendBtn').disabled=true;
-  addMsg('user',esc(phone||'you'),esc(message));
-  typing();
+async function loadDemo(){
+  setErr('');const b=$('demoBtn');b.disabled=true;b.innerHTML='<span class="spin"></span>Analyzing…';
   try{
-    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phone,name,message})});
-    if(!r.ok)throw new Error('server '+r.status);
-    const j=await r.json();untype();
-    addMsg('bot',esc(j.agent||'agent')+' agent',
-      esc(j.reply||'(no reply)').replace(/\n/g,'<br>'),
-      [{t:'intent: '+(j.intent||'?'),c:'v'},{t:'llm: '+(j.llm_provider||'?')},
-       {t:j.returning_customer?'returning customer':'new customer',c:j.returning_customer?'g':''}]);
-    traceEl.textContent='TRACE · '+new Date().toLocaleTimeString()+'\n'+JSON.stringify(
-      {intent:j.intent,agent:j.agent,llm_provider:j.llm_provider,returning_customer:j.returning_customer,
-       context_used:j.context_used,actions_taken:j.actions_taken},null,2);
-  }catch(e){untype();toast('Chat failed: '+e.message);}
-  $('sendBtn').disabled=false;
+    const r=await fetch('/api/sample');const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||'demo failed');
+    const csv=await (await fetch('/api/sample.csv')).text();
+    lastRows=parseCSV(csv);isDemo=true;render(d,true);
+  }catch(e){setErr('Demo failed: '+e.message);}
+  b.disabled=false;b.textContent='⚡ Analyze demo shop';
 }
-$('msg').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
-
-async function showChurn(){
-  goTab('churn');const b=$('churnBody');b.innerHTML='<span class="spin" style="border-top-color:var(--bad)"></span> querying graph…';
+function parseCSV(t){
+  const [h,...lines]=t.trim().split('\n');const cols=h.split(',').map(c=>c.trim());
+  return lines.filter(l=>l.trim()).map(l=>{const v=l.split(',');const o={};cols.forEach((c,i)=>o[c]=(v[i]||'').trim());return{
+    sku:o.sku,product_name:o.product_name||o.sku,category:o.category||null,
+    on_hand:+o.on_hand||0,avg_daily_sales:+o.avg_daily_sales||0,
+    lead_time_days:+o.lead_time_days||0,unit_cost:+(o.unit_cost||0)};});
+}
+async function uploadCSV(inp){
+  setErr('');const f=inp.files[0];if(!f)return;
+  const fd=new FormData();fd.append('file',f);
   try{
-    const j=await (await fetch('/api/churn')).json();
-    traceEl.textContent='CHURN RISK (agents act on connected data)\n'+JSON.stringify(j,null,2);
-    b.innerHTML=j.count?`<div style="margin-bottom:8px;color:var(--dim);font-size:12.5px">${j.count} customer(s) with unresolved HIGH-priority tickets</div>`+
-      j.at_risk.map(c=>`<div class="riskrow"><b>${esc(c.name)}</b> <span style="color:var(--dim)">${esc(c.phone)}</span><br>${c.open_tickets} open ticket(s) — flagged for follow-up</div>`).join('')
-      :'<div style="color:var(--ok)">No customers at churn risk right now.</div>';
-    addMsg('bot','Churn-risk report',`${j.count} customer(s) flagged with unresolved HIGH-priority tickets.`,[{t:'manager view',c:'v'}]);
-  }catch(e){b.textContent='Failed: '+e.message;toast('Churn report failed: '+e.message);}
+    const r=await fetch('/api/analyze',{method:'POST',body:fd});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||'Upload failed');
+    lastRows=parseCSV(await f.text());isDemo=false;render(d,false);
+  }catch(e){setErr(e.message);}
+  inp.value='';
 }
-async function showStats(){
-  goTab('graph');const b=$('graphBody');b.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> running Cypher…';
+function countUp(el,to,prefix=''){
+  const t0=performance.now(),dur=700;
+  (function f(t){const p=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-p,3);
+    el.textContent=prefix+Math.round(to*e).toLocaleString();if(p<1)requestAnimationFrame(f);})(t0);
+}
+function render(d,demo){
+  $('results').style.display='block';
+  countUp($('kItems'),d.item_count);countUp($('kCrit'),d.critical_count);countUp($('kHigh'),d.high_count);
+  $('kVal').textContent='$'+Math.round(d.total_value_at_risk).toLocaleString();
+  $('dataBadge').textContent=demo?'demo data · synthetic':'your data';
+  $('tbl').innerHTML=d.items.map(i=>{
+    const dl=i.days_of_stock,w=dl===null?0:Math.min(100,dl/30*100);
+    return `<tr><td><code class="sku">${esc(i.sku)}</code></td><td>${esc(i.product_name)}</td><td>${esc(i.on_hand)}</td>
+    <td>${dl===null?'—':dl}<div class="daysbar"><div style="width:${w}%;background:${RISKCOL[i.risk_level]||'#999'}"></div></div></td>
+    <td><span class="pill ${i.risk_level}">${i.risk_level}</span></td>
+    <td><b>${Math.round(i.suggested_order_qty)}</b></td><td class="why">${esc(i.reason)}</td></tr>`;}).join('');
+  drawRiskChart(d.items);
+  $('narrCard').style.display='none';$('answer').style.display='none';
+  $('results').scrollIntoView({behavior:'smooth'});
+}
+async function narrate(){
+  if(!lastRows)return;const b=$('narrBtn');b.disabled=true;
+  $('narrative').innerHTML='<span class="spin lt"></span> Generating briefing…';$('narrCard').style.display='block';
   try{
-    const j=await (await fetch('/api/graph/stats')).json();
-    traceEl.textContent='GRAPH STATS (live Cypher counts)\n'+JSON.stringify(j,null,2);
-    const rows=Object.entries(j.counts||{}).sort((a,b2)=>b2[1]-a[1]);
-    b.innerHTML=rows.length?rows.map(([k,v])=>`<div class="kv"><span>${esc(k)}</span><b>${v}</b></div>`).join('')
-      :'<div style="color:var(--dim)">Graph is empty — press “Reset demo data”.</div>';
-  }catch(e){b.textContent='Failed: '+e.message;toast('Graph stats failed: '+e.message);}
+    const r=await fetch('/api/narrate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastRows)});
+    const d=await r.json();if(!r.ok)throw new Error(d.detail||'narrate failed');
+    $('narrProv').textContent=d.provider==='infinisynapse'?'InfiniSynapse AI':d.provider==='pollinations'?'AI':'offline heuristic';
+    $('narrative').textContent=d.narrative;
+  }catch(e){$('narrative').textContent='Briefing failed: '+e.message;}
+  b.disabled=false;
 }
-async function reseed(){
-  try{await fetch('/api/seed',{method:'POST'});
-    addMsg('bot','System','Demo data has been reset to the fictional “Velocity Motors” dataset.',[{t:'reset',c:'v'}]);
-    toast('Demo data reset.');
-  }catch(e){toast('Reset failed: '+e.message);}
-}
-
-// suggestions
-const sug=["I want a car under 30 lakh","My service is delayed, I'm upset","What is your warranty policy?","Do you have any SUV in black?"];
-$('chips').innerHTML=sug.map(s=>`<div class="chip" onclick="chipSend(this)">${esc(s)}</div>`).join('');
-function chipSend(el){$('msg').value=el.textContent;send();}
-
-// boot
-(async()=>{
+async function ask(){
+  const q=$('q').value.trim();if(!q||!lastRows)return;
+  const box=$('answer');box.style.display='block';box.innerHTML='<span class="spin lt"></span> Thinking…';
+  $('askBtn').disabled=true;
   try{
-    const s=await (await fetch('/api/status')).json();
-    $('sysStatus').innerHTML=`<span class="dot"></span><span>FalkorDB <b>${esc(s.falkordb_mode||'?')}</b> · LLM <b>${esc(s.llm_provider||'?')}</b></span>`;
-  }catch(e){$('sysStatus').innerHTML='<span style="color:var(--bad)">backend unreachable</span>';}
-  addMsg('bot','Dealership Brain',
-    'Welcome to <b>Velocity Motors</b>. I remember our customers across visits — try a suggestion below, then <b>change the phone number</b> to meet a brand-new customer with no memory.',
-    [{t:'falkordb memory',c:'v'},{t:'multi-agent',c:'g'}]);
-})();
+    const r=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({question:q,rows:lastRows})});
+    const d=await r.json();if(!r.ok)throw new Error(d.detail||'ask failed');
+    box.innerHTML='<b>Answer</b> <span class="provtag">'+esc(d.provider||'heuristic-qa')+'</span><br><br>'+esc(d.answer).replace(/\n/g,'<br>')+
+      (d.citations&&d.citations.length?'<div class="cites">Referenced: '+d.citations.map(c=>`<code>${esc(c)}</code>`).join('')+'</div>':'');
+  }catch(e){box.textContent='Failed: '+e.message;}
+  $('askBtn').disabled=false;
+}
+fetch('/api/status').then(r=>r.json()).then(s=>{
+  const p=s.ai_provider||'';
+  $('aiBadge').textContent=p==='infinisynapse'?'InfiniSynapse AI connected':p?('AI: '+p):'engine ready';
+}).catch(()=>{});
+/* risk chart interactions */
+$('riskChart').addEventListener('mousemove',chartHover);
+$('riskChart').addEventListener('mouseleave',()=>{$('chartTip').style.display='none';});
+let rzT=null;
+window.addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{if(chartItems.length)drawRiskChart(chartItems,false);},200);});
 </script>
 </body>
 </html>
