@@ -38,9 +38,16 @@ def get_db():
     try:
         from redislite import FalkorDB
         # Persistent file so seed data survives across processes/restarts.
+        # On serverless (Vercel) the app dir (/var/task) is read-only — use /tmp.
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        data_dir = os.environ.get("FALKOR_DATA_DIR", os.path.join(here, "falkordb-data"))
-        os.makedirs(data_dir, exist_ok=True)
+        default_dir = os.path.join(here, "falkordb-data")
+        data_dir = os.environ.get("FALKOR_DATA_DIR", default_dir)
+        try:
+            os.makedirs(data_dir, exist_ok=True)
+        except OSError:
+            # Read-only filesystem (e.g. Vercel /var/task) — fall back to /tmp
+            data_dir = os.path.join("/tmp", "falkordb-data")
+            os.makedirs(data_dir, exist_ok=True)
         db = FalkorDB(os.path.join(data_dir, "brain.db"))
         _last_error = None
         return db, "embedded"

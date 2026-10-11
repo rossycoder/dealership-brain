@@ -34,8 +34,13 @@ class ChatIn(BaseModel):
 
 @app.on_event("startup")
 def _startup():
-    graph, _ = G.get_graph()
-    G.ensure_schema(graph)
+    # Defensive: never crash the function at startup (Vercel runs this even
+    # with Mangum lifespan="off"). Graph errors are reported via /api/status.
+    try:
+        graph, _ = G.get_graph()
+        G.ensure_schema(graph)
+    except Exception:
+        pass  # /api/status will show the diagnostic
 
 
 @app.get("/", response_class=HTMLResponse)
