@@ -30,9 +30,38 @@ def get_db():
     return db, "embedded"
 
 
-def get_graph():
+_seeded_this_process = False
+
+
+def get_graph(auto_seed=True):
+    """Return (graph, mode). ensure_schema runs lazily (idempotent) so the app
+    works even when the FastAPI startup event never fires (e.g. Mangum on Vercel).
+
+    When auto_seed is True (default), an empty graph is seeded once per process
+    with the fictional demo dataset — this makes cold starts on serverless
+    (Vercel) immediately demoable. Pass auto_seed=False from seed() itself to
+    avoid re-entry.
+    """
+    global _seeded_this_process
     db, mode = get_db()
-    return db.select_graph(GRAPH_NAME), mode
+    graph = db.select_graph(GRAPH_NAME)
+    # Lazy schema ensure: idempotent, and guarantees indexes exist even when
+    # the FastAPI startup event never runs (e.g. Mangum/lifespan="off" on Vercel).
+    try:
+        ensure_schema(graph)
+    except Exception:
+        pass
+    if auto_seed and not _seeded_this_process:
+        _seeded_this_process = True
+        try:
+            res = graph.query("MATCH (n) RETURN count(n) AS c")
+            count = res.result_set[0][0] if res.result_set else 0
+            if count == 0:
+                from app import seed as seedmod  # lazy: avoids circular import
+                seedmod.seed()
+        except Exception:
+            pass
+    return graph, mode
 
 
 def wipe_graph(graph):
