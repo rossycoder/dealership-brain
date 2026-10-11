@@ -1,12 +1,16 @@
 """FalkorDB connection layer.
 
-Two modes:
+Three modes:
 - EMBEDDED (default): real FalkorDB engine via falkordblite (redislite).
   No Docker, no server needed. Used for local dev and demo.
 - EXTERNAL: connect to a real FalkorDB server (FalkorDB Cloud / Docker)
   when FALKOR_HOST is set. Used at hackathon time.
+- MEMORY (fallback): pure-Python in-memory graph when neither works
+  (e.g. Vercel serverless blocks the redislite binary). Same data model,
+  same API — demo stays fully functional.
 
-Both modes run REAL Cypher against a REAL FalkorDB engine. Nothing is faked.
+Embedded/external run REAL Cypher against a REAL FalkorDB engine.
+Memory mode is an honest fallback for serverless (labeled in /api/status).
 """
 import os
 import traceback
@@ -16,9 +20,25 @@ GRAPH_NAME = "dealership_brain"
 # Last graph initialization error (for diagnostics via /api/status)
 _last_error = None
 
+# Singleton memory fallback (per process)
+_memory_graph = None
+
 
 def get_last_error():
     return _last_error
+
+
+def _get_memory_graph():
+    global _memory_graph
+    if _memory_graph is None:
+        from app.memory_graph import MemoryGraph
+        _memory_graph = MemoryGraph()
+    return _memory_graph
+
+
+def _is_memory(graph):
+    from app.memory_graph import MemoryGraph
+    return isinstance(graph, MemoryGraph)
 
 
 def get_db():
@@ -52,8 +72,11 @@ def get_db():
         _last_error = None
         return db, "embedded"
     except Exception as e:
-        _last_error = f"Embedded FalkorDB (redislite) failed: {type(e).__name__}: {e}\n{traceback.format_exc()[-2000:]}"
-        raise RuntimeError(_last_error)
+        # Embedded FalkorDB failed (e.g. redislite binary blocked on serverless).
+        # Fall back to pure-Python in-memory graph — demo stays fully functional.
+        _last_error = (f"Embedded FalkorDB (redislite) failed: {type(e).__name__}: {e}. "
+                       f"Fell back to in-memory graph.")
+        return _get_memory_graph(), "memory"
 
 
 _seeded_this_process = False
@@ -67,16 +90,21 @@ def get_graph(auto_seed=True):
     with the fictional demo dataset — this makes cold starts on serverless
     (Vercel) immediately demoable. Pass auto_seed=False from seed() itself to
     avoid re-entry.
+
+    Modes: 'external' | 'embedded' | 'memory' (fallback, same API).
     """
     global _seeded_this_process
     try:
         db, mode = get_db()
     except RuntimeError:
-        raise  # _last_error already set with details
-    except Exception as e:
-        global _last_error
-        _last_error = f"get_db unexpected: {type(e).__name__}: {e}"
-        raise RuntimeError(_last_error)
+        # External FalkorDB explicitly configured but failed — fall back to memory
+        # rather than crash (keeps demo alive; /api/status shows the diagnostic).
+        return _get_memory_graph(), "memory"
+    except Exception:
+        return _get_memory_graph(), "memory"
+    if mode == "memory":
+        # get_db already returned the memory graph directly
+        return db, mode
     graph = db.select_graph(GRAPH_NAME)
     # Lazy schema ensure: idempotent, and guarantees indexes exist even when
     # the FastAPI startup event never runs (e.g. Mangum/lifespan="off" on Vercel).
@@ -99,6 +127,14 @@ def get_graph(auto_seed=True):
 
 def wipe_graph(graph):
     """Delete everything (fresh demo reset)."""
+    if _is_memory(graph):
+        # Re-seed a fresh memory graph
+        from app.memory_graph import MemoryGraph
+        graph._nodes.clear()
+        graph._rels.clear()
+        graph._next_id = 1
+        graph._seed()
+        return
     graph.query("MATCH (n) DETACH DELETE n")
 
 
@@ -110,6 +146,8 @@ CREATE INDEX FOR (v:Vehicle) ON (v.stock_no);
 
 
 def ensure_schema(graph):
+    if _is_memory(graph):
+        return  # no indexes needed
     for stmt in [s.strip() for s in SCHEMA_CYPHER.strip().split(";") if s.strip()]:
         try:
             graph.query(stmt)
@@ -118,10 +156,12 @@ def ensure_schema(graph):
 
 
 # ---------------------------------------------------------------------------
-# Read helpers used by agents (all real Cypher)
+# Read helpers used by agents (real Cypher on FalkorDB, native on memory mode)
 # ---------------------------------------------------------------------------
 
 def find_customer_by_phone(graph, phone):
+    if _is_memory(graph):
+        return graph.find_customer_by_phone(phone)
     res = graph.query(
         "MATCH (c:Customer {phone: $phone}) RETURN c.name, c.budget, c.segment",
         params={"phone": phone},
@@ -134,6 +174,8 @@ def find_customer_by_phone(graph, phone):
 
 def customer_history(graph, phone, limit=5):
     """Past conversations + tickets for a customer (memory across sessions)."""
+    if _is_memory(graph):
+        return graph.customer_history(phone, limit)
     res = graph.query(
         """
         MATCH (c:Customer {phone: $phone})-[:HAD]->(conv:Conversation)
@@ -161,6 +203,8 @@ def customer_history(graph, phone, limit=5):
 
 
 def vehicles_in_budget(graph, budget, limit=5):
+    if _is_memory(graph):
+        return graph.vehicles_in_budget(budget, limit)
     res = graph.query(
         """
         MATCH (v:Vehicle)
@@ -177,6 +221,8 @@ def vehicles_in_budget(graph, budget, limit=5):
 
 
 def find_policy(graph, topic_keyword):
+    if _is_memory(graph):
+        return graph.find_policy(topic_keyword)
     res = graph.query(
         """
         MATCH (p:Policy)
@@ -190,6 +236,8 @@ def find_policy(graph, topic_keyword):
 
 def churn_risk_customers(graph, limit=5):
     """High-value customers with unresolved high-priority tickets (agent ACTS on this)."""
+    if _is_memory(graph):
+        return graph.churn_risk_customers(limit)
     res = graph.query(
         """
         MATCH (c:Customer)-[:REPORTED]->(t:Ticket)
@@ -208,6 +256,9 @@ def churn_risk_customers(graph, limit=5):
 
 def record_conversation(graph, phone, name, summary, intent):
     """Write memory back to the graph after each turn."""
+    if _is_memory(graph):
+        graph.record_conversation(phone, name, summary, intent)
+        return
     graph.query(
         """
         MERGE (c:Customer {phone: $phone})
@@ -220,6 +271,8 @@ def record_conversation(graph, phone, name, summary, intent):
 
 
 def create_ticket(graph, phone, issue, priority="normal"):
+    if _is_memory(graph):
+        return graph.create_ticket(phone, issue, priority)
     res = graph.query(
         """
         MATCH (c:Customer {phone: $phone})
