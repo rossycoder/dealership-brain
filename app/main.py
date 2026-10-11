@@ -50,6 +50,13 @@ def index():
         return f.read()
 
 
+# Vercel rewrite target: when "/" is rewritten to "/api/index", serve the UI.
+# (Some Vercel Python runtimes don't normalize the path before Mangum sees it.)
+@app.get("/api/index", response_class=HTMLResponse)
+def index_via_rewrite():
+    return index()
+
+
 @app.get("/api/status")
 def status():
     _, mode = G.get_graph()
