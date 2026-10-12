@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dealership Brain — AI Company Brain</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -150,6 +151,25 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
   background:var(--panel2);color:var(--txt);cursor:pointer;transition:.2s;margin-top:8px}
 .mini:hover{border-color:var(--ok);color:var(--ok)}
 .mini.warn:hover{border-color:var(--warn);color:var(--warn)}
+/* ---- Neighborhood graph (vis.js) ---- */
+#visNet{height:380px;border:1px solid var(--line);border-radius:14px;background:rgba(7,11,22,.6);margin-top:10px}
+.vis-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:11.5px;color:var(--dim)}
+.vis-legend span{display:inline-flex;align-items:center;gap:5px}
+.vis-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+/* ---- Smart match ---- */
+.matchrow{padding:12px 14px;border:1px solid var(--line);border-radius:14px;margin-bottom:10px;background:rgba(255,255,255,.02)}
+.matchrow .score{font-family:'Space Grotesk';font-size:20px;font-weight:700;color:var(--cy)}
+.matchmsg{margin-top:8px;padding:10px 12px;border-radius:10px;background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.3);font-size:12.5px;white-space:pre-wrap}
+/* ---- Leaderboard ---- */
+.lbrow{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--line);border-radius:14px;margin-bottom:8px;background:rgba(255,255,255,.02)}
+.lbrow.top1{border-color:rgba(250,204,21,.5);background:rgba(250,204,21,.05)}
+.lbrow.top2{border-color:rgba(203,213,225,.4);background:rgba(203,213,225,.04)}
+.lbrow.top3{border-color:rgba(217,119,6,.45);background:rgba(217,119,6,.05)}
+.lbmedal{font-size:22px}
+.lbrow .who{flex:1}
+.lbrow .who b{color:var(--txt)}
+.lbrow .who .sub{color:var(--dim);font-size:11.5px;margin-top:2px}
+.lbscore{font-family:'Space Grotesk';font-weight:700;font-size:18px;color:var(--cy)}
 .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
 .stat{background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:center}
 .stat b{display:block;font-size:20px;color:var(--txt)}
@@ -226,6 +246,9 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
         <button class="btn ghost" onclick="showCallbacks()">📞 Callback SLA <span id="cbAlert" style="margin-left:auto"></span></button>
         <button class="btn ghost" onclick="showPromises()">🤝 Promise tracker <span id="prAlert" style="margin-left:auto"></span></button>
         <button class="btn ghost" onclick="showService()">🔧 Service updates</button>
+        <button class="btn ghost" onclick="showNeighborhood()">🕸️ Customer graph</button>
+        <button class="btn ghost" onclick="showSmartMatch()">🎯 Smart match</button>
+        <button class="btn ghost" onclick="showLeaderboard()">🏆 Staff leaderboard</button>
         <button class="btn ghost" onclick="reseed()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-2.6-6.4M21 4v5h-5"/></svg>Reset demo data</button>
       </div>
       <div class="card">
@@ -236,6 +259,9 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
           <div class="tab" onclick="tab('service',this)">Service</div>
           <div class="tab" onclick="tab('churn',this)">Churn</div>
           <div class="tab" onclick="tab('graph',this)">Graph</div>
+          <div class="tab" onclick="tab('map',this)">Map</div>
+          <div class="tab" onclick="tab('match',this)">Match</div>
+          <div class="tab" onclick="tab('team',this)">Team</div>
         </div>
         <div class="pane on scroll" id="pane-trace"><pre class="trace" id="trace">Agent trace appears here after your first message…</pre></div>
         <div class="pane scroll" id="pane-callbacks"><div id="cbBody" style="color:var(--dim);font-size:13px">Loading callbacks…</div></div>
@@ -243,6 +269,9 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
         <div class="pane scroll" id="pane-service"><div id="svcBody" style="color:var(--dim);font-size:13px">Loading tickets…</div></div>
         <div class="pane scroll" id="pane-churn"><div id="churnBody" style="color:var(--dim);font-size:13px">Run the churn-risk report to see customers the graph flags.</div></div>
         <div class="pane scroll" id="pane-graph"><div id="graphBody" style="color:var(--dim);font-size:13px">Run “Graph stats” to query live node counts.</div></div>
+        <div class="pane scroll" id="pane-map"><div id="mapBody" style="color:var(--dim);font-size:13px">Pick a customer to see their live graph neighborhood.</div></div>
+        <div class="pane scroll" id="pane-match"><div id="matchBody" style="color:var(--dim);font-size:13px">Pick a new arrival to find matching customers.</div></div>
+        <div class="pane scroll" id="pane-team"><div id="teamBody" style="color:var(--dim);font-size:13px">Loading staff leaderboard…</div></div>
       </div>
     </div>
   </div>
@@ -566,6 +595,145 @@ async function advanceTicket(id){
     toast('Ticket '+id+' → '+j.stage+'. Customer notified.');
     setTimeout(showService,1800);
   }catch(e){toast('Advance failed: '+e.message);}
+}
+
+// ================= NEIGHBORHOOD GRAPH (vis.js) =================
+const VIS_COLORS={customer:{background:'#22d3ee',border:'#0e7490'},
+  vehicle:{background:'#34d399',border:'#047857'},
+  ticket:{background:'#f87171',border:'#b91c1c'},
+  conversation:{background:'#a78bfa',border:'#6d28d9'},
+  callback:{background:'#fbbf24',border:'#b45309'},
+  promise:{background:'#f472b6',border:'#be185d'}};
+const VIS_LABEL={customer:'Customer',vehicle:'Vehicle',ticket:'Ticket',
+  conversation:'Conversation',callback:'Callback',promise:'Promise'};
+let visNetwork=null;
+async function showNeighborhood(phone){
+  goTab('map');const b=$('mapBody');
+  const ph=(phone||$('nbPhone')&&$('nbPhone').value||'+923001111111').trim();
+  b.innerHTML=`<div class="formgrid">
+      <label>Customer neighborhood — live graph</label>
+      <input id="nbPhone" placeholder="Customer phone" value="${esc(ph)}">
+      <button class="btn ghost" onclick="showNeighborhood()">🕸️ Draw graph</button>
+    </div><div style="margin-top:10px;color:var(--dim);font-size:12.5px">Loading neighborhood…</div>`;
+  try{
+    const j=await (await fetch('/api/graph/neighborhood?phone='+encodeURIComponent(ph))).json();
+    if(j.error){b.innerHTML=`<div style="color:var(--bad)">Customer not found: ${esc(ph)}</div>`;return;}
+    const nodes=new vis.DataSet((j.nodes||[]).map(n=>({...n,
+      color:VIS_COLORS[n.group]||{background:'#94a3b8',border:'#475569'},
+      shape:n.group==='customer'?'star':'dot',size:n.group==='customer'?28:16,
+      font:{color:'#e6ecf5',size:11}})));
+    const edges=new vis.DataSet((j.edges||[]).map(e=>({...e,
+      font:{color:'#8b94a7',size:10},arrows:'to',color:{color:'#3b4763'}})));
+    b.innerHTML=`<div class="formgrid">
+        <label>Customer neighborhood — <b>${esc(j.customer.name||ph)}</b> · ${j.nodes.length} nodes, ${j.edges.length} edges</label>
+        <input id="nbPhone" placeholder="Customer phone" value="${esc(ph)}">
+        <button class="btn ghost" onclick="showNeighborhood()">🕸️ Draw graph</button>
+      </div>
+      <div class="vis-legend">${Object.keys(VIS_LABEL).map(g=>
+        `<span><span class="vis-dot" style="background:${VIS_COLORS[g].background}"></span>${VIS_LABEL[g]}</span>`).join('')}</div>
+      <div id="visNet"></div>
+      <div style="color:var(--faint);font-size:11.5px;margin-top:6px">Click a node for details · drag to pan · scroll to zoom</div>`;
+    if(visNetwork)visNetwork.destroy();
+    visNetwork=new vis.Network($('visNet'),{nodes,edges},{
+      physics:{stabilization:{iterations:120}},
+      interaction:{hover:true,tooltipDelay:120}});
+  }catch(e){b.innerHTML=`<div style="color:var(--bad)">Graph failed: ${esc(e.message)}</div>`;}
+}
+
+// ================= SMART MATCH + FOLLOW-UP AGENT =================
+async function showSmartMatch(){
+  goTab('match');const b=$('matchBody');
+  b.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> loading vehicles…';
+  try{
+    const j=await (await fetch('/api/vehicles')).json();
+    const vs=j.vehicles||[];
+    b.innerHTML=`<div class="formgrid">
+      <label>🎯 Smart match — new arrival → best customers + drafted follow-ups</label>
+      <select id="smVehicle" style="background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:10px">
+        ${vs.map(v=>`<option value="${esc(v.stock_no)}">${esc(v.stock_no)} — ${esc(v.year)} ${esc(v.make)} ${esc(v.model)} · PKR ${(v.price||0).toLocaleString()} · ${esc(v.body_type)}</option>`).join('')}
+      </select>
+      <button class="btn ghost" onclick="runSmartMatch()">🎯 Find matches</button>
+    </div>
+    <div class="formgrid" style="margin-top:10px">
+      <label>Simulate a brand-new arrival (demo)</label>
+      <input id="naStock" placeholder="Stock no e.g. VM-201">
+      <input id="naMake" placeholder="Make e.g. Toyota">
+      <input id="naModel" placeholder="Model e.g. Yaris Cross">
+      <div style="display:flex;gap:8px">
+        <input id="naYear" type="number" value="2025" placeholder="Year" style="flex:1">
+        <input id="naPrice" type="number" value="5200000" placeholder="Price PKR" style="flex:2">
+      </div>
+      <div style="display:flex;gap:8px">
+        <input id="naColour" placeholder="Colour e.g. red" style="flex:1">
+        <input id="naBody" placeholder="Body e.g. suv" value="suv" style="flex:1">
+      </div>
+      <button class="btn ghost" onclick="addArrival()">+ Add arrival &amp; match</button>
+    </div>
+    <div id="smResults" style="margin-top:12px"></div>`;
+  }catch(e){b.textContent='Failed: '+e.message;}
+}
+async function addArrival(){
+  const body={stock_no:$('naStock').value.trim()||('VM-'+(200+Math.floor(Math.random()*50))),
+    make:$('naMake').value.trim()||'Toyota',model:$('naModel').value.trim()||'Corolla Cross',
+    year:parseInt($('naYear').value)||2025,price:parseFloat($('naPrice').value)||5000000,
+    colour:$('naColour').value.trim()||'white',body_type:$('naBody').value.trim()||'suv'};
+  const r=await fetch('/api/vehicles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json();
+  if(!j.ok){toast('Add failed: '+(j.error||'unknown'));return;}
+  toast('New arrival '+j.stock_no+' added.');
+  await showSmartMatch();
+  $('smVehicle').value=j.stock_no;
+  runSmartMatch();
+}
+async function runSmartMatch(){
+  const stock=$('smVehicle').value;
+  const box=$('smResults');
+  box.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> matching customers…';
+  try{
+    const j=await (await fetch('/api/smart-match',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({stock_no:stock})})).json();
+    if(!j.ok)throw new Error(j.error||'match failed');
+    const v=j.vehicle,ms=j.matches||[];
+    box.innerHTML=`<div style="margin-bottom:10px;font-size:13px;color:var(--dim)">
+        New arrival: <b style="color:var(--txt)">${esc(v.year)} ${esc(v.make)} ${esc(v.model)}</b>
+        · PKR ${(v.price||0).toLocaleString()} · ${ms.length} match(es)</div>`+
+      (ms.length?ms.map((m,i)=>`
+        <div class="matchrow">
+          <div class="rowhead"><b>#${i+1} ${esc(m.name)}</b><span class="score">${m.score}</span></div>
+          <div class="sub">📱 ${esc(m.phone)} · budget PKR ${(m.budget||0).toLocaleString()} · ${esc(m.segment||'')}</div>
+          <div class="sub" style="margin-top:4px">✓ ${(m.reasons||[]).map(esc).join('<br>✓ ')}</div>
+          <div class="matchmsg">${esc(m.draft_message)}</div>
+          <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+            <button class="mini" onclick="copyDraft(this)">📋 Copy message</button>
+            <span style="font-size:11px;color:var(--faint)">drafted by ${esc(m.draft_provider||'template')}</span>
+          </div>
+        </div>`).join(''):'<div style="color:var(--dim)">No matching customers found.</div>');
+  }catch(e){box.innerHTML=`<div style="color:var(--bad)">Match failed: ${esc(e.message)}</div>`;}
+}
+function copyDraft(btn){
+  const msg=btn.closest('.matchrow').querySelector('.matchmsg').textContent;
+  navigator.clipboard.writeText(msg).then(()=>toast('Draft copied — paste into WhatsApp.'));
+}
+
+// ================= STAFF LEADERBOARD =================
+async function showLeaderboard(){
+  goTab('team');const b=$('teamBody');
+  b.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> loading leaderboard…';
+  try{
+    const j=await (await fetch('/api/staff/leaderboard')).json();
+    const rows=j.leaderboard||[];
+    const medals=['🥇','🥈','🥉'];
+    b.innerHTML=`<div style="font-size:13px;color:var(--dim);margin-bottom:10px">
+        Ranked by on-time callbacks ×10 + kept promises ×10 + completed callbacks ×2</div>`+
+      (rows.length?rows.map((s,i)=>`
+        <div class="lbrow${i===0?' top1':i===1?' top2':i===2?' top3':''}">
+          <div class="lbmedal">${medals[i]||'👤'}</div>
+          <div class="who"><b>${esc(s.name)}</b>
+            <div class="sub">${esc(s.role||'staff')} · 📞 ${s.cb_done}/${s.cb_total} callbacks done (${s.cb_compliance}% on-time) · 🤝 ${s.pr_kept}/${s.pr_total} promises kept${s.pr_overdue?` · <span style="color:var(--bad)">${s.pr_overdue} overdue</span>`:''}</div>
+          </div>
+          <div class="lbscore">${s.score}</div>
+        </div>`).join(''):'<div style="color:var(--dim)">No staff data.</div>');
+  }catch(e){b.textContent='Failed: '+e.message;}
 }
 
 // suggestions
