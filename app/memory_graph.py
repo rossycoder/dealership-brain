@@ -269,6 +269,248 @@ class MemoryGraph:
         out.sort(key=lambda c: c["open_tickets"], reverse=True)
         return out[:limit]
 
+    # -- neighborhood graph / smart match / leaderboard (new features) --------
+
+    def list_vehicles(self):
+        out = []
+        for _, n in self._find("Vehicle"):
+            p = dict(n["props"])
+            out.append(p)
+        out.sort(key=lambda v: v.get("stock_no", ""))
+        return out
+
+    def add_vehicle(self, stock_no, make, model, year, price, colour, body_type,
+                    status="available"):
+        self._add_node("Vehicle", {"stock_no": stock_no, "make": make, "model": model,
+                                   "year": year, "price": price, "colour": colour,
+                                   "body_type": body_type, "status": status})
+        return stock_no
+
+    def neighborhood(self, phone):
+        """Customer-centered subgraph for vis.js: nodes + edges."""
+        found = self._find("Customer", phone=phone)
+        if not found:
+            return {"nodes": [], "edges": [], "error": "customer not found"}
+        c_nid, c_node = found[0]
+        cp = c_node["props"]
+        nodes, edges = [], []
+        seen = set()
+
+        def add_node(key, ntype, label, detail):
+            if key in seen:
+                return
+            seen.add(key)
+            nodes.append({"id": key, "group": ntype, "label": label, "title": detail})
+
+        def add_edge(frm, to, label):
+            edges.append({"from": frm, "to": to, "label": label})
+
+        c_key = f"c:{phone}"
+        add_node(c_key, "customer", cp.get("name") or phone,
+                 f"Customer: {cp.get('name')}<br>Phone: {phone}<br>"
+                 f"Budget: PKR {(cp.get('budget') or 0):,}<br>Segment: {cp.get('segment')}")
+        # Only include nodes directly related to this customer
+        related_nids = set()
+        for r in self._rels:
+            if r["from"] == c_nid:
+                related_nids.add(r["to"])
+            elif r["to"] == c_nid:
+                related_nids.add(r["from"])
+        for nid in related_nids:
+            n = self._nodes.get(nid)
+            if not n:
+                continue
+            p = n["props"]
+            labels = n["labels"]
+            key = None
+            if "Vehicle" in labels:
+                key = f"v:{p.get('stock_no')}"
+                add_node(key, "vehicle",
+                         f"{p.get('make')} {p.get('model')}",
+                         f"{p.get('year')} {p.get('make')} {p.get('model')}<br>"
+                         f"PKR {(p.get('price') or 0):,} · {p.get('colour')} · {p.get('body_type')}<br>"
+                         f"Status: {p.get('status')}")
+            elif "Ticket" in labels:
+                key = f"t:{p.get('id')}"
+                add_node(key, "ticket", f"🎫 {p.get('id')}",
+                         f"Ticket {p.get('id')}: {p.get('issue')}<br>"
+                         f"Status: {p.get('status')} · Priority: {p.get('priority')} · Stage: {p.get('stage')}")
+            elif "Conversation" in labels:
+                key = f"cv:{nid}"
+                add_node(key, "conversation",
+                         f"💬 {(p.get('summary') or '')[:28]}",
+                         f"Conversation: {p.get('summary')}<br>Intent: {p.get('intent')}")
+            elif "Callback" in labels:
+                key = f"cb:{p.get('id')}"
+                add_node(key, "callback", f"📞 {p.get('topic', '')[:24]}",
+                         f"Callback: {p.get('topic')}<br>Staff: {p.get('staff')} · Status: {p.get('status')}")
+            elif "Promise" in labels:
+                key = f"pr:{p.get('id')}"
+                add_node(key, "promise", f"🤝 {(p.get('promise') or '')[:24]}",
+                         f"Promise: {p.get('promise')}<br>Staff: {p.get('staff')} · Status: {p.get('status')}")
+        # edges: only rels touching the customer
+        for r in self._rels:
+            if r["from"] != c_nid and r["to"] != c_nid:
+                continue
+            frm_n = self._nodes.get(r["from"])
+            to_n = self._nodes.get(r["to"])
+            if not frm_n or not to_n:
+                continue
+            f_key = self._node_key(r["from"], frm_n)
+            t_key = self._node_key(r["to"], to_n)
+            if f_key and t_key and f_key in seen and t_key in seen:
+                add_edge(f_key, t_key, r["type"])
+        # link callbacks/promises to customer by phone (they have no graph rel)
+        for nid, n in self._nodes.items():
+            labels = n["labels"]
+            if "Callback" not in labels and "Promise" not in labels:
+                continue
+            p = n["props"]
+            if p.get("customer_phone") != phone:
+                continue
+            if "Callback" in labels:
+                key = f"cb:{p.get('id')}"
+                add_node(key, "callback", f"📞 {p.get('topic', '')[:24]}",
+                         f"Callback: {p.get('topic')}<br>Staff: {p.get('staff')} · Status: {p.get('status')}")
+                add_edge(c_key, key, "OWES")
+            else:
+                key = f"pr:{p.get('id')}"
+                add_node(key, "promise", f"🤝 {(p.get('promise') or '')[:24]}",
+                         f"Promise: {p.get('promise')}<br>Staff: {p.get('staff')} · Status: {p.get('status')}")
+                add_edge(c_key, key, "PROMISED")
+        return {"nodes": nodes, "edges": edges,
+                "customer": {"name": cp.get("name"), "phone": phone}}
+
+    def _node_key(self, nid, n):
+        p = n["props"]
+        labels = n["labels"]
+        if "Customer" in labels:
+            return f"c:{p.get('phone')}"
+        if "Vehicle" in labels:
+            return f"v:{p.get('stock_no')}"
+        if "Ticket" in labels:
+            return f"t:{p.get('id')}"
+        if "Conversation" in labels:
+            return f"cv:{nid}"
+        if "Callback" in labels:
+            return f"cb:{p.get('id')}"
+        if "Promise" in labels:
+            return f"pr:{p.get('id')}"
+        return None
+
+    def _key_to_nid(self, key):
+        for nid, n in self._nodes.items():
+            if self._node_key(nid, n) == key:
+                return nid
+        return None
+
+    def smart_match(self, stock_no):
+        """Rank customers for a vehicle: budget fit + past interest + engagement."""
+        veh = None
+        for _, n in self._find("Vehicle", stock_no=stock_no):
+            veh = dict(n["props"])
+            break
+        if not veh:
+            return {"vehicle": None, "matches": [], "error": "vehicle not found"}
+        price = veh.get("price") or 0
+        v_body = (veh.get("body_type") or "").lower()
+        v_make = (veh.get("make") or "").lower()
+        matches = []
+        for nid, n in self._find("Customer"):
+            p = n["props"]
+            phone = p.get("phone")
+            budget = p.get("budget") or 0
+            # budget score (0-40)
+            if price <= budget:
+                b_score = 40
+                b_reason = f"within budget (PKR {budget:,})"
+            elif price <= budget * 1.15:
+                b_score = 20
+                b_reason = f"slightly over budget (PKR {budget:,})"
+            else:
+                b_score = 0
+                b_reason = f"over budget (PKR {budget:,})"
+            # interest score (0-40): past views/interest in same body_type/make
+            i_score, i_reasons = 0, []
+            for _, vn in self._related(nid, "INTERESTED_IN", "out", "Vehicle"):
+                vp = vn["props"]
+                if (vp.get("body_type") or "").lower() == v_body and v_body:
+                    i_score = max(i_score, 25)
+                    i_reasons.append(f"interested in {vp.get('make')} {vp.get('model')} ({v_body})")
+                if (vp.get("make") or "").lower() == v_make and v_make:
+                    i_score = max(i_score, 15)
+                    i_reasons.append(f"likes {veh.get('make')}")
+            for _, vn in self._related(nid, "VIEWED", "out", "Vehicle"):
+                vp = vn["props"]
+                if (vp.get("body_type") or "").lower() == v_body and v_body:
+                    i_score = max(i_score, 20)
+                    i_reasons.append(f"viewed a {v_body} before")
+                if (vp.get("make") or "").lower() == v_make and v_make:
+                    i_score = max(i_score, 12)
+                    i_reasons.append(f"viewed {veh.get('make')} before")
+            # skip customers who already own this vehicle
+            owns = any((vn["props"].get("stock_no") == stock_no)
+                       for _, vn in self._related(nid, "OWNS", "out", "Vehicle"))
+            if owns:
+                continue
+            # engagement score (0-20)
+            convs = self._related(nid, "HAD", "out", "Conversation")
+            e_score = 20 if convs else 0
+            e_reason = f"{len(convs)} past conversation(s)" if convs else "no prior conversations"
+            total = b_score + i_score + e_score
+            if total <= 0:
+                continue
+            matches.append({
+                "name": p.get("name"), "phone": phone,
+                "budget": budget, "segment": p.get("segment"),
+                "score": total,
+                "reasons": [b_reason] + i_reasons + [e_reason],
+            })
+        matches.sort(key=lambda m: m["score"], reverse=True)
+        return {"vehicle": veh, "matches": matches[:8]}
+
+    def staff_leaderboard(self):
+        """Rank staff by on-time callbacks + kept promises."""
+        now = int(time.time() * 1000)
+        staff = {}
+
+        def ensure(name, role=""):
+            if name and name not in staff:
+                staff[name] = {"name": name, "role": role,
+                               "cb_total": 0, "cb_done": 0, "cb_on_time": 0,
+                               "pr_total": 0, "pr_kept": 0, "pr_overdue": 0}
+            return staff.get(name)
+
+        for _, n in self._find("Staff"):
+            ensure(n["props"].get("name"), n["props"].get("role"))
+        for _, n in self._find("Callback"):
+            p = n["props"]
+            s = ensure(p.get("staff"))
+            if not s:
+                continue
+            s["cb_total"] += 1
+            if p.get("status") == "done":
+                s["cb_done"] += 1
+                if p.get("done_on_time"):
+                    s["cb_on_time"] += 1
+        for _, n in self._find("Promise"):
+            p = n["props"]
+            s = ensure(p.get("staff"))
+            if not s:
+                continue
+            s["pr_total"] += 1
+            if p.get("status") == "done":
+                s["pr_kept"] += 1
+            elif (p.get("deadline_at") or 0) < now:
+                s["pr_overdue"] += 1
+        board = []
+        for s in staff.values():
+            s["score"] = s["cb_on_time"] * 10 + s["pr_kept"] * 10 + s["cb_done"] * 2
+            s["cb_compliance"] = round(100 * s["cb_on_time"] / s["cb_done"], 1) if s["cb_done"] else 100.0
+            board.append(s)
+        board.sort(key=lambda s: s["score"], reverse=True)
+        return {"leaderboard": board}
+
     def record_conversation(self, phone, name, summary, intent):
         found = self._find("Customer", phone=phone)
         if found:

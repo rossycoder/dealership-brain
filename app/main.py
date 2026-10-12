@@ -211,6 +211,103 @@ def advance_ticket(ticket_id: str):
     return {"ok": True, **res}
 
 
+# ---------------------------------------------------------------------------
+# Neighborhood graph (vis.js) — advisor feature #1
+# ---------------------------------------------------------------------------
+
+@app.get("/api/graph/neighborhood")
+def graph_neighborhood(phone: str):
+    graph = _need_graph()
+    return JSONResponse(G.neighborhood(graph, phone.strip()))
+
+
+# ---------------------------------------------------------------------------
+# Smart Match + FollowUp agent — advisor feature #4
+# ---------------------------------------------------------------------------
+
+class VehicleIn(BaseModel):
+    stock_no: str
+    make: str = ""
+    model: str = ""
+    year: int = 2024
+    price: float = 0
+    colour: str = ""
+    body_type: str = ""
+
+
+class SmartMatchIn(BaseModel):
+    stock_no: str
+
+
+@app.get("/api/vehicles")
+def get_vehicles():
+    graph = _need_graph()
+    return {"vehicles": G.list_vehicles(graph)}
+
+
+@app.post("/api/vehicles")
+def add_vehicle(body: VehicleIn):
+    graph = _need_graph()
+    stock_no = body.stock_no.strip()
+    if not stock_no:
+        return JSONResponse({"ok": False, "error": "stock_no required"}, status_code=400)
+    G.add_vehicle(graph, stock_no, body.make.strip(), body.model.strip(),
+                  body.year, body.price, body.colour.strip(),
+                  body.body_type.strip() or "sedan")
+    return {"ok": True, "stock_no": stock_no}
+
+
+def _draft_followup(name, phone, vehicle, reasons, provider_label_out=None):
+    """Draft a personalized WhatsApp-style follow-up. LLM first, template fallback."""
+    v_desc = f"{vehicle.get('year')} {vehicle.get('make')} {vehicle.get('model')}"
+    price = vehicle.get("price") or 0
+    template = (
+        f"Hi {name}! A new {v_desc} ({vehicle.get('colour')}) just arrived at "
+        f"PKR {price:,.0f} — it matches your interest and budget. "
+        f"Want a free 30-minute test drive this week? — Velocity Motors"
+    )
+    try:
+        from app import free_llm
+        if free_llm.available_provider() is not None:
+            system = ("You are a car dealership sales assistant. Write a short, warm, "
+                      "personalized WhatsApp follow-up message (max 3 sentences) for a "
+                      "customer about a newly arrived vehicle. Use ONLY the given facts. "
+                      "No invented prices. Sign off as '— Velocity Motors'.")
+            user = (f"Customer: {name} ({phone}). Reasons this car fits: "
+                    f"{'; '.join(reasons)}. Vehicle: {v_desc}, colour {vehicle.get('colour')}, "
+                    f"body {vehicle.get('body_type')}, price PKR {price:,.0f}.")
+            text, label = free_llm.chat(system, user, max_tokens=200, temperature=0.5)
+            if text and text.strip():
+                return text.strip(), label
+    except Exception:
+        pass
+    return template, "template"
+
+
+@app.post("/api/smart-match")
+def smart_match(body: SmartMatchIn):
+    graph = _need_graph()
+    res = G.smart_match(graph, body.stock_no.strip())
+    if res.get("error"):
+        return JSONResponse({"ok": False, "error": res["error"]}, status_code=404)
+    vehicle = res["vehicle"]
+    out_matches = []
+    for m in res["matches"]:
+        msg, provider = _draft_followup(m["name"], m["phone"], vehicle, m["reasons"])
+        out_matches.append({**m, "draft_message": msg, "draft_provider": provider})
+    return {"ok": True, "vehicle": vehicle, "matches": out_matches}
+
+
+# ---------------------------------------------------------------------------
+# Staff leaderboard — advisor extra feature
+# ---------------------------------------------------------------------------
+
+@app.get("/api/staff/leaderboard")
+def staff_leaderboard():
+    graph = _need_graph()
+    return JSONResponse(G.staff_leaderboard(graph))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8125")))

@@ -464,3 +464,193 @@ def advance_ticket(graph, ticket_id):
     msg = STAGE_MESSAGES[nxt].format(name=name or "there", issue=issue or "", id=ticket_id)
     return {"id": ticket_id, "stage": nxt, "stages": TICKET_STAGES,
             "customer_message": msg}
+
+
+# ---------------------------------------------------------------------------
+# Neighborhood graph / Smart Match / Staff leaderboard (advisor features)
+# ---------------------------------------------------------------------------
+
+def neighborhood(graph, phone):
+    """Customer-centered subgraph -> {nodes, edges} for vis.js."""
+    if _is_memory(graph):
+        return graph.neighborhood(phone)
+    cust = find_customer_by_phone(graph, phone)
+    if not cust:
+        return {"nodes": [], "edges": [], "error": "customer not found"}
+    nodes, edges, seen = [], [], set()
+
+    def add_node(key, group, label, title):
+        if key not in seen:
+            seen.add(key)
+            nodes.append({"id": key, "group": group, "label": label, "title": title})
+
+    def add_edge(frm, to, label):
+        edges.append({"from": frm, "to": to, "label": label})
+
+    c_key = f"c:{phone}"
+    add_node(c_key, "customer", cust["name"] or phone,
+             f"Customer: {cust['name']}<br>Phone: {phone}<br>"
+             f"Budget: PKR {(cust.get('budget') or 0):,}<br>Segment: {cust.get('segment')}")
+    res = graph.query(
+        """MATCH (c:Customer {phone: $phone})-[r]->(n)
+           RETURN labels(n)[0], n, type(r)""",
+        params={"phone": phone})
+
+    def _props(node):
+        # falkordb-py returns Node objects; be liberal in what we accept
+        if hasattr(node, "properties"):
+            return dict(node.properties)
+        if isinstance(node, dict):
+            return dict(node)
+        try:
+            return dict(node)
+        except Exception:
+            return {}
+
+    for r in res.result_set:
+        label, props, rtype = r[0], _props(r[1]), r[2]
+        key = None
+        if label == "Vehicle":
+            key = f"v:{props.get('stock_no')}"
+            add_node(key, "vehicle", f"{props.get('make')} {props.get('model')}",
+                     f"{props.get('year')} {props.get('make')} {props.get('model')}<br>"
+                     f"PKR {(props.get('price') or 0):,} · {props.get('colour')} · {props.get('body_type')}")
+        elif label == "Ticket":
+            key = f"t:{props.get('id')}"
+            add_node(key, "ticket", f"🎫 {props.get('id')}",
+                     f"Ticket {props.get('id')}: {props.get('issue')}<br>Status: {props.get('status')}")
+        elif label == "Conversation":
+            key = f"cv:{props.get('timestamp')}"
+            add_node(key, "conversation", f"💬 {str(props.get('summary') or '')[:28]}",
+                     f"Conversation: {props.get('summary')}<br>Intent: {props.get('intent')}")
+        if key:
+            add_edge(c_key, key, rtype)
+    # callbacks + promises linked by phone
+    for lbl, keypre, group, icon in (("Callback", "cb", "callback", "📞"),
+                                     ("Promise", "pr", "promise", "🤝")):
+        res2 = graph.query(
+            f"""MATCH (x:{lbl}) WHERE x.customer_phone = $phone
+                RETURN x.id, x.topic, x.promise, x.staff, x.status""",
+            params={"phone": phone})
+        for r in res2.result_set:
+            key = f"{keypre}:{r[0]}"
+            txt = r[1] or r[2] or ""
+            add_node(key, group, f"{icon} {str(txt)[:24]}",
+                     f"{lbl}: {txt}<br>Staff: {r[3]} · Status: {r[4]}")
+            add_edge(c_key, key, "OWES" if lbl == "Callback" else "PROMISED")
+    return {"nodes": nodes, "edges": edges,
+            "customer": {"name": cust["name"], "phone": phone}}
+
+
+def list_vehicles(graph):
+    if _is_memory(graph):
+        return graph.list_vehicles()
+    res = graph.query(
+        """MATCH (v:Vehicle) RETURN v.stock_no, v.make, v.model, v.year,
+           v.price, v.colour, v.body_type, v.status ORDER BY v.stock_no""")
+    return [{"stock_no": r[0], "make": r[1], "model": r[2], "year": r[3],
+             "price": r[4], "colour": r[5], "body_type": r[6], "status": r[7]}
+            for r in res.result_set]
+
+
+def add_vehicle(graph, stock_no, make, model, year, price, colour, body_type,
+                status="available"):
+    if _is_memory(graph):
+        return graph.add_vehicle(stock_no, make, model, year, price,
+                                 colour, body_type, status)
+    graph.query(
+        """CREATE (:Vehicle {stock_no: $stock_no, make: $make, model: $model,
+                             year: $year, price: $price, colour: $colour,
+                             body_type: $body_type, status: $status})""",
+        params={"stock_no": stock_no, "make": make, "model": model, "year": year,
+                "price": price, "colour": colour, "body_type": body_type,
+                "status": status})
+    return stock_no
+
+
+def smart_match(graph, stock_no):
+    """Rank customers for a vehicle. Cypher path mirrors memory logic."""
+    if _is_memory(graph):
+        return graph.smart_match(stock_no)
+    vehs = [v for v in list_vehicles(graph) if v["stock_no"] == stock_no]
+    if not vehs:
+        return {"vehicle": None, "matches": [], "error": "vehicle not found"}
+    veh = vehs[0]
+    price, v_body = veh.get("price") or 0, (veh.get("body_type") or "").lower()
+    v_make = (veh.get("make") or "").lower()
+    res = graph.query(
+        """MATCH (c:Customer)
+           OPTIONAL MATCH (c)-[r:INTERESTED_IN|VIEWED]->(v:Vehicle)
+           OPTIONAL MATCH (c)-[:OWNS]->(owned:Vehicle {stock_no: $stock_no})
+           OPTIONAL MATCH (c)-[:HAD]->(conv:Conversation)
+           RETURN c.name, c.phone, c.budget, c.segment,
+                  collect(DISTINCT {rel: type(r), body: v.body_type, make: v.make}) AS iv,
+                  count(DISTINCT owned) AS owns,
+                  count(DISTINCT conv) AS convs""",
+        params={"stock_no": stock_no})
+    matches = []
+    for r in res.result_set:
+        name, phone, budget, segment, iv, owns, convs = r[0], r[1], r[2] or 0, r[3], r[4] or [], r[5] or 0, r[6] or 0
+        if owns:
+            continue
+        if price <= budget:
+            b_score, b_reason = 40, f"within budget (PKR {budget:,})"
+        elif price <= budget * 1.15:
+            b_score, b_reason = 20, f"slightly over budget (PKR {budget:,})"
+        else:
+            b_score, b_reason = 0, f"over budget (PKR {budget:,})"
+        i_score, i_reasons = 0, []
+        for item in iv:
+            if not item.get("rel"):
+                continue
+            if (item.get("body") or "").lower() == v_body and v_body:
+                i_score = max(i_score, 25 if item["rel"] == "INTERESTED_IN" else 20)
+                i_reasons.append(f"{item['rel'].lower()} a {v_body} before")
+            if (item.get("make") or "").lower() == v_make and v_make:
+                i_score = max(i_score, 15 if item["rel"] == "INTERESTED_IN" else 12)
+                i_reasons.append(f"{item['rel'].lower()} {veh.get('make')} before")
+        e_score = 20 if convs else 0
+        total = b_score + i_score + e_score
+        if total <= 0:
+            continue
+        matches.append({"name": name, "phone": phone, "budget": budget,
+                        "segment": segment, "score": total,
+                        "reasons": [b_reason] + i_reasons +
+                                   [f"{convs} past conversation(s)" if convs else "no prior conversations"]})
+    matches.sort(key=lambda m: m["score"], reverse=True)
+    return {"vehicle": veh, "matches": matches[:8]}
+
+
+def staff_leaderboard(graph):
+    if _is_memory(graph):
+        return graph.staff_leaderboard()
+    import time as _t
+    now = int(_t.time() * 1000)
+    res = graph.query("MATCH (s:Staff) RETURN s.name, s.role")
+    staff = {r[0]: {"name": r[0], "role": r[1], "cb_total": 0, "cb_done": 0,
+                    "cb_on_time": 0, "pr_total": 0, "pr_kept": 0, "pr_overdue": 0}
+             for r in res.result_set}
+    res = graph.query("MATCH (c:Callback) RETURN c.staff, c.status, c.done_on_time, c.promised_at")
+    for r in res.result_set:
+        s = staff.setdefault(r[0], {"name": r[0], "role": "", "cb_total": 0, "cb_done": 0,
+                                    "cb_on_time": 0, "pr_total": 0, "pr_kept": 0, "pr_overdue": 0})
+        s["cb_total"] += 1
+        if r[1] == "done":
+            s["cb_done"] += 1
+            if r[2]:
+                s["cb_on_time"] += 1
+    res = graph.query("MATCH (p:Promise) RETURN p.staff, p.status, p.deadline_at")
+    for r in res.result_set:
+        s = staff.setdefault(r[0], {"name": r[0], "role": "", "cb_total": 0, "cb_done": 0,
+                                    "cb_on_time": 0, "pr_total": 0, "pr_kept": 0, "pr_overdue": 0})
+        s["pr_total"] += 1
+        if r[1] == "done":
+            s["pr_kept"] += 1
+        elif (r[2] or 0) < now:
+            s["pr_overdue"] += 1
+    board = list(staff.values())
+    for s in board:
+        s["score"] = s["cb_on_time"] * 10 + s["pr_kept"] * 10 + s["cb_done"] * 2
+        s["cb_compliance"] = round(100 * s["cb_on_time"] / s["cb_done"], 1) if s["cb_done"] else 100.0
+    board.sort(key=lambda s: s["score"], reverse=True)
+    return {"leaderboard": board}
