@@ -13,6 +13,17 @@ DEMO = True  # marker: this file only ever writes fictional demo data
 def seed():
     graph, mode = get_graph(auto_seed=False)
     print(f"FalkorDB mode: {mode}")
+    if mode == "memory":
+        # MemoryGraph has no Cypher engine — reset natively via its own seeder
+        # (which mirrors this file's FICTIONAL dataset, incl. service fields).
+        graph._nodes.clear()
+        graph._rels.clear()
+        graph._next_id = 1
+        graph._seed()
+        print("Seeded (FICTIONAL demo data, memory mode):")
+        for label, c in sorted(graph.stats().items()):
+            print(f"  {label}: {c}")
+        return
     wipe_graph(graph)
     ensure_schema(graph)
 
@@ -120,6 +131,19 @@ def seed():
                           deadline_at: $d2, created_at: $c2, status:'pending'})
         """, params={"d1": _now - 5 * _D, "c1": _now - 10 * _D,
                      "d2": _now + 2 * _D, "c2": _now - 1 * _D})
+
+    # --- Service history (FICTIONAL): days since last service per vehicle ---
+    import time as _t2
+    _now2 = int(_t2.time() * 1000)
+    _D2 = 24 * 3600 * 1000
+    _svc = {"VM-101": 165, "VM-102": 40, "VM-103": 90, "VM-104": 20,
+            "VM-105": 60, "VM-106": 210, "VM-107": 120, "VM-108": 10}
+    graph.query("""
+        UNWIND keys($svc) AS sn
+        MATCH (v:Vehicle {stock_no: sn})
+        SET v.last_service_date = $now - $svc[sn] * $day,
+            v.service_interval_km = 5000
+        """, params={"svc": _svc, "now": _now2, "day": _D2})
 
     # --- verify ---
     res = graph.query("MATCH (n) RETURN labels(n)[0] AS label, count(n) AS c ORDER BY label")

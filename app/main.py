@@ -30,6 +30,7 @@ class ChatIn(BaseModel):
     phone: str
     name: str = ""
     message: str
+    lang: str = "en"  # "en" | "ur" (Roman Urdu)
 
 
 class CallbackIn(BaseModel):
@@ -100,8 +101,12 @@ def _need_graph():
 @app.post("/api/chat")
 def chat(body: ChatIn):
     graph = _need_graph()
+    lang = (body.lang or "en").strip().lower()
+    if lang not in ("en", "ur"):
+        lang = "en"
     result = agents.handle_message(graph, body.phone.strip(),
-                                   body.name.strip(), body.message.strip())
+                                   body.name.strip(), body.message.strip(),
+                                   lang=lang)
     return JSONResponse(result)
 
 
@@ -306,6 +311,112 @@ def smart_match(body: SmartMatchIn):
 def staff_leaderboard():
     graph = _need_graph()
     return JSONResponse(G.staff_leaderboard(graph))
+
+
+# ---------------------------------------------------------------------------
+# Trade-in valuation — "what will you give me for my old car?"
+# ---------------------------------------------------------------------------
+
+class TradeInIn(BaseModel):
+    make: str = ""
+    model: str = ""
+    year: int = 2020
+    mileage_km: int = 60000
+    condition: str = "good"  # excellent | good | fair | poor
+
+
+@app.post("/api/tradein/valuate")
+def tradein_valuate(body: TradeInIn):
+    return JSONResponse(G.valuate_tradein(body.make, body.model, body.year,
+                                          body.mileage_km, body.condition))
+
+
+# ---------------------------------------------------------------------------
+# Test-drive booking
+# ---------------------------------------------------------------------------
+
+class TestDriveIn(BaseModel):
+    customer_phone: str
+    customer_name: str = ""
+    stock_no: str = ""
+    date: str = ""        # YYYY-MM-DD
+    time_slot: str = ""   # one of G.TESTDRIVE_SLOTS
+
+
+@app.get("/api/testdrive/slots")
+def testdrive_slots():
+    return {"slots": G.TESTDRIVE_SLOTS}
+
+
+@app.post("/api/testdrive/book")
+def testdrive_book(body: TestDriveIn):
+    graph = _need_graph()
+    res = G.book_testdrive(graph, body.customer_phone.strip(),
+                           body.customer_name.strip() or body.customer_phone.strip(),
+                           body.stock_no.strip(), body.date.strip(),
+                           body.time_slot.strip())
+    if not res.get("ok"):
+        return JSONResponse(res, status_code=409)
+    return JSONResponse(res)
+
+
+@app.get("/api/testdrive/list")
+def testdrive_list():
+    graph = _need_graph()
+    return {"bookings": G.list_testdrives(graph)}
+
+
+# ---------------------------------------------------------------------------
+# Financing pre-check (EMI)
+# ---------------------------------------------------------------------------
+
+class FinanceIn(BaseModel):
+    price: float = 3000000
+    down_payment: float = 600000
+    months: int = 36
+    annual_rate_pct: float = 22.0
+
+
+@app.post("/api/finance/quote")
+def finance_quote(body: FinanceIn):
+    return JSONResponse(G.finance_quote(body.price, body.down_payment,
+                                        body.months, body.annual_rate_pct))
+
+
+# ---------------------------------------------------------------------------
+# Service reminders — "when is my car's service due?"
+# ---------------------------------------------------------------------------
+
+@app.get("/api/service/due")
+def service_due():
+    graph = _need_graph()
+    return JSONResponse(G.service_due(graph))
+
+
+# ---------------------------------------------------------------------------
+# "Brain remembers" — full customer memory card
+# ---------------------------------------------------------------------------
+
+@app.get("/api/memory/{phone}")
+def customer_memory(phone: str):
+    graph = _need_graph()
+    res = G.customer_memory(graph, phone.strip())
+    if res.get("error"):
+        return JSONResponse(res, status_code=404)
+    return JSONResponse(res)
+
+
+# ---------------------------------------------------------------------------
+# n8n webhook alert for broken promises
+# ---------------------------------------------------------------------------
+
+@app.post("/api/promises/{pr_id}/alert")
+def promise_alert(pr_id: str):
+    graph = _need_graph()
+    res = G.send_promise_alert(graph, pr_id)
+    if not res.get("ok"):
+        return JSONResponse(res, status_code=404 if "not found" in str(res.get("error", "")) else 502)
+    return JSONResponse(res)
 
 
 if __name__ == "__main__":

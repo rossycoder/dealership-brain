@@ -64,7 +64,7 @@ def triage(message: str) -> tuple[str, str]:
 
 
 def sales_agent(graph, phone: str, name: str, message: str, customer: dict | None,
-                returning: bool = False) -> AgentResult:
+                returning: bool = False, lang: str = "en") -> AgentResult:
     budget = (customer or {}).get("budget") or _budget_from_text(message) or 5_000_000
     body_type, colour = parse_vehicle_filters(message)
     vehicles = G.vehicles_in_budget(graph, budget, body_type=body_type, colour=colour)
@@ -82,7 +82,7 @@ def sales_agent(graph, phone: str, name: str, message: str, customer: dict | Non
         # the LLM path adds a "do NOT list unrelated vehicles" instruction.
         "no_match": {"desc": desc, "budget": budget} if no_match else None,
     }
-    reply, provider = llm.draft_reply("sales", context)
+    reply, provider = llm.draft_reply("sales", context, lang)
     if no_match:
         actions = [f"no {desc} vehicles found within budget PKR {budget:,} (honest no-match)"]
     else:
@@ -96,7 +96,7 @@ def sales_agent(graph, phone: str, name: str, message: str, customer: dict | Non
 
 
 def service_agent(graph, phone: str, name: str, message: str, customer: dict | None,
-                   returning: bool = False) -> AgentResult:
+                   returning: bool = False, lang: str = "en") -> AgentResult:
     history = G.customer_history(graph, phone)
     policies = G.find_policy(graph, "warranty")
     # ACT on connected data: high-priority open ticket -> escalate
@@ -105,22 +105,28 @@ def service_agent(graph, phone: str, name: str, message: str, customer: dict | N
     context = {"message": message,
                "customer": customer or {"name": name, "phone": phone},
                "history": history, "policies": policies, "returning": returning}
-    reply, provider = llm.draft_reply("service", context)
+    reply, provider = llm.draft_reply("service", context, lang)
     actions = []
     if open_high:
         actions.append(f"ESCALATED ticket {open_high[0]['id']} to service manager (high-priority open)")
-        reply += f"\n\nI've also flagged your open ticket {open_high[0]['id']} as urgent with our service manager."
+        if lang == "ur":
+            reply += f"\n\nMene aapki open ticket {open_high[0]['id']} ko service manager ke paas urgent mark kar diya hai."
+        else:
+            reply += f"\n\nI've also flagged your open ticket {open_high[0]['id']} as urgent with our service manager."
     elif "book" in message.lower() or "appointment" in message.lower():
         tid = G.create_ticket(graph, phone, message[:120], priority="normal")
         actions.append(f"created service ticket {tid}")
-        reply += f"\n\nI've created service ticket {tid} for you."
+        if lang == "ur":
+            reply += f"\n\nMene aapke liye service ticket {tid} bana di hai."
+        else:
+            reply += f"\n\nI've created service ticket {tid} for you."
     return AgentResult(agent="service", reply=reply, provider=provider,
                        context_used={"past_tickets": len(history["tickets"])},
                        actions=actions)
 
 
 def policy_agent(graph, phone: str, name: str, message: str, customer: dict | None,
-                  returning: bool = False) -> AgentResult:
+                  returning: bool = False, lang: str = "en") -> AgentResult:
     import re
     kw = "warranty"
     for w in ("return", "exchange", "financ", "test drive", "warranty"):
@@ -131,24 +137,25 @@ def policy_agent(graph, phone: str, name: str, message: str, customer: dict | No
     context = {"message": message,
                "customer": customer or {"name": name, "phone": phone},
                "policies": policies, "returning": returning}
-    reply, provider = llm.draft_reply("policy", context)
+    reply, provider = llm.draft_reply("policy", context, lang)
     return AgentResult(agent="policy", reply=reply, provider=provider,
                        context_used={"policies": len(policies)}, actions=[])
 
 
 def general_agent(graph, phone: str, name: str, message: str, customer: dict | None,
-                   returning: bool = False) -> AgentResult:
+                   returning: bool = False, lang: str = "en") -> AgentResult:
     history = G.customer_history(graph, phone)
     context = {"message": message,
                "customer": customer or {"name": name, "phone": phone},
                "history": history, "returning": returning}
-    reply, provider = llm.draft_reply("general", context)
+    reply, provider = llm.draft_reply("general", context, lang)
     return AgentResult(agent="general", reply=reply, provider=provider,
                        context_used={"past_conversations": len(history["conversations"])},
                        actions=[])
 
 
-def handle_message(graph, phone: str, name: str, message: str) -> dict:
+def handle_message(graph, phone: str, name: str, message: str,
+                   lang: str = "en") -> dict:
     """Full loop: triage -> specialist -> write memory back to graph."""
     customer = G.find_customer_by_phone(graph, phone)
     display_name = (customer or {}).get("name") or name or "there"
@@ -161,13 +168,13 @@ def handle_message(graph, phone: str, name: str, message: str) -> dict:
     intent, triage_provider = triage(message)
 
     if intent == "sales":
-        res = sales_agent(graph, phone, display_name, message, customer, returning=returning)
+        res = sales_agent(graph, phone, display_name, message, customer, returning=returning, lang=lang)
     elif intent == "service":
-        res = service_agent(graph, phone, display_name, message, customer, returning=returning)
+        res = service_agent(graph, phone, display_name, message, customer, returning=returning, lang=lang)
     elif intent == "policy":
-        res = policy_agent(graph, phone, display_name, message, customer, returning=returning)
+        res = policy_agent(graph, phone, display_name, message, customer, returning=returning, lang=lang)
     else:
-        res = general_agent(graph, phone, display_name, message, customer, returning=returning)
+        res = general_agent(graph, phone, display_name, message, customer, returning=returning, lang=lang)
 
     # Write memory back: every turn becomes graph history (Track 2)
     G.record_conversation(graph, phone, display_name,
@@ -182,6 +189,7 @@ def handle_message(graph, phone: str, name: str, message: str) -> dict:
         "context_used": res["context_used"],
         "actions_taken": res["actions"],
         "returning_customer": returning,
+        "lang": lang,
     }
 
 

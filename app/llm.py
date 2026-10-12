@@ -119,8 +119,8 @@ def classify_intent(text: str, context_hint: str = "") -> tuple[str, str]:
     return heuristic_intent(text), "heuristic"
 
 
-def draft_reply(intent: str, context: dict) -> tuple[str, str]:
-    """Returns (reply_text, provider_label)."""
+def draft_reply(intent: str, context: dict, lang: str = "en") -> tuple[str, str]:
+    """Returns (reply_text, provider_label). lang='ur' -> Roman Urdu."""
     if _llm_active():
         returning = bool(context.get("returning"))
         memory_rule = (
@@ -138,17 +138,67 @@ def draft_reply(intent: str, context: dict) -> tuple[str, str]:
             "do NOT list unrelated vehicles."
             if no_match else ""
         )
+        lang_rule = (
+            " LANGUAGE RULE: reply ENTIRELY in Roman Urdu (Urdu written in Latin "
+            "script, e.g. 'Assalam-o-Alaikum! Aap kaise hain?'). Never use English "
+            "sentences; keep prices/numbers as-is."
+            if lang == "ur" else ""
+        )
         system = (
             "You are a helpful car dealership assistant. Answer concisely using ONLY "
             "the provided context (customer history, vehicles, policies). "
             "If context is missing, say so honestly. Never invent prices or policies. "
-            + memory_rule + filter_rule
+            + memory_rule + filter_rule + lang_rule
         )
         user = f"Intent: {intent}\nContext: {context}\nCustomer message: {context.get('message','')}"
         llm_text, label = _llm_chat(system, user)
         if llm_text:
             return llm_text, label
+    if lang == "ur":
+        return heuristic_reply_ur(intent, context), "heuristic-ur"
     return heuristic_reply(intent, context), "heuristic"
+
+
+def heuristic_reply_ur(intent: str, context: dict) -> str:
+    """Roman Urdu heuristic replies (demo-grade, mirrors heuristic_reply)."""
+    name = context.get("customer", {}).get("name") or "dost"
+    returning = bool(context.get("returning"))
+    vehicles = context.get("vehicles", [])
+    policies = context.get("policies", [])
+    no_match = context.get("no_match")
+
+    parts = []
+    if returning:
+        parts.append(f"Welcome back, {name}! Me aapko yaad rakhta hun.")
+    else:
+        parts.append(f"Assalam-o-Alaikum {name}! Me Dealership Brain hun.")
+
+    if intent == "sales":
+        if no_match:
+            parts.append(
+                f"Maazrat — abhi hamare paas {no_match['desc']} aapke budget "
+                f"PKR {no_match['budget']:,} ke andar available nahi hai.")
+            parts.append("Kya aap chahein ke jese hi aisi gari aaye me aapko inform kar dun, ya kareebi options dikhaun?")
+        elif vehicles:
+            lines = [f"- {v['year']} {v['make']} {v['model']} ({v.get('colour','')}, {v.get('body_type','')}) — PKR {v['price']:,} ({v['stock_no']})" for v in vehicles[:4]]
+            parts.append("Aapke budget ke hisaab se ye gariyan available hain:\n" + "\n".join(lines))
+            parts.append("Kya in me se kisi ka FREE 30-minute test drive book kar dun?")
+        else:
+            parts.append("Is waqt aapke budget me koi gari available nahi mil rahi.")
+    elif intent == "service":
+        tickets = context.get("history", {}).get("tickets", [])
+        if tickets:
+            t = tickets[0]
+            parts.append(f"Aapki ticket {t['id']} ('{t['issue']}') abhi '{t['status']}' stage me hai. Hamara service advisor aapko jald update karega.")
+        else:
+            parts.append("Me aapke liye service appointment book kar sakta hun. Kaunsi gari hai aur kya masla hai?")
+    elif intent == "policy" and policies:
+        p = policies[0]
+        parts.append(f"Hamari {p['topic']} policy ye hai: {p['content']}")
+    else:
+        parts.append("Bataiye, me aapki kya madad kar sakta hun — nayi gari khareedni hai ya apni gari ki service karwani hai?")
+
+    return "\n\n".join(parts)
 
 
 def extract_name(text: str) -> str | None:

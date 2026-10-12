@@ -9,6 +9,15 @@ All data is FICTIONAL demo data (mirrors app/seed.py).
 import time
 
 
+def _veh_dict(n):
+    """Flatten a Vehicle node to the public vehicle dict shape."""
+    p = n["props"]
+    return {"stock_no": p.get("stock_no"), "make": p.get("make"),
+            "model": p.get("model"), "year": p.get("year"),
+            "price": p.get("price"), "colour": p.get("colour"),
+            "body_type": p.get("body_type"), "status": p.get("status")}
+
+
 class MemoryGraph:
     """Pure-Python property graph. Nodes are dicts: {id, labels, props}.
     Relationships are dicts: {from_id, to_id, type}."""
@@ -521,6 +530,99 @@ class MemoryGraph:
                                               "summary": summary, "intent": intent})
         self._add_rel(nid, cid, "HAD")
 
+    # -- test drives / service reminders / memory card (new features) ---------
+
+    def book_testdrive(self, customer_phone, customer_name, stock_no, date, time_slot):
+        from app.graph import TESTDRIVE_SLOTS
+        if time_slot not in TESTDRIVE_SLOTS:
+            return {"ok": False,
+                    "error": f"invalid slot (choose from {TESTDRIVE_SLOTS})"}
+        if not self._find("Vehicle", stock_no=stock_no):
+            return {"ok": False, "error": "vehicle not found"}
+        for _, n in self._find("TestDrive"):
+            p = n["props"]
+            if (p.get("stock_no") == stock_no and p.get("date") == date
+                    and p.get("time_slot") == time_slot
+                    and p.get("status") == "booked"):
+                return {"ok": False,
+                        "error": "slot already booked for this vehicle"}
+        td_id = f"TD-{int(time.time() * 1000)}"
+        found = self._find("Customer", phone=customer_phone)
+        c_nid = found[0][0] if found else self._add_node(
+            "Customer", {"phone": customer_phone, "name": customer_name,
+                         "segment": "new"})
+        t_nid = self._add_node("TestDrive", {
+            "id": td_id, "customer_phone": customer_phone,
+            "customer_name": customer_name, "stock_no": stock_no,
+            "date": date, "time_slot": time_slot, "status": "booked",
+            "created_at": int(time.time() * 1000)})
+        self._add_rel(c_nid, t_nid, "BOOKED")
+        return {"ok": True, "id": td_id}
+
+    def list_testdrives(self):
+        out = []
+        for _, n in self._find("TestDrive"):
+            p = dict(n["props"])
+            veh = self._find("Vehicle", stock_no=p.get("stock_no"))
+            if veh:
+                vp = veh[0][1]["props"]
+                p["make"], p["model"], p["year"] = (
+                    vp.get("make"), vp.get("model"), vp.get("year"))
+            out.append(p)
+        out.sort(key=lambda t: (t.get("date", ""), t.get("time_slot", "")))
+        return out
+
+    def service_due(self):
+        from app.graph import SERVICE_INTERVAL_DAYS
+        now_ms = int(time.time() * 1000)
+        day = 24 * 3600 * 1000
+        out = []
+        for v_nid, n in self._find("Vehicle"):
+            p = n["props"]
+            last = p.get("last_service_date") or 0
+            due_at = last + SERVICE_INTERVAL_DAYS * day if last else 0
+            days_left = (due_at - now_ms) / day if due_at else 0
+            # owner, if any
+            owner_name, owner_phone = "", ""
+            for r in self._rels:
+                if r["type"] == "OWNS" and r["to"] == v_nid:
+                    cn = self._nodes.get(r["from"])
+                    if cn:
+                        owner_name = cn["props"].get("name", "")
+                        owner_phone = cn["props"].get("phone", "")
+                    break
+            out.append({
+                "stock_no": p.get("stock_no"), "make": p.get("make"),
+                "model": p.get("model"), "year": p.get("year"),
+                "status": p.get("status"),
+                "last_service_date": last,
+                "service_interval_km": p.get("service_interval_km") or 5000,
+                "owner_name": owner_name, "owner_phone": owner_phone,
+                "days_overdue": round(-days_left) if days_left < 0 else 0,
+                "due_in_days": round(days_left) if days_left >= 0 else 0,
+                "urgency": "overdue" if days_left < 0 else
+                           "due_soon" if days_left <= 30 else "ok",
+            })
+        out.sort(key=lambda v: (0 if v["urgency"] == "overdue" else
+                                1 if v["urgency"] == "due_soon" else 2,
+                                -v["days_overdue"]))
+        return {"reminders": out, "interval_days": SERVICE_INTERVAL_DAYS}
+
+    def customer_vehicles(self, phone):
+        """Buckets of vehicles linked to a customer (for the memory card)."""
+        found = self._find("Customer", phone=phone)
+        if not found:
+            return {"interested_in": [], "viewed": [], "owns": []}
+        nid, _ = found[0]
+        buckets = {"interested_in": [], "viewed": [], "owns": []}
+        for _, n in self._related(nid, "INTERESTED_IN", "out", "Vehicle"):
+            buckets["interested_in"].append(_veh_dict(n))
+        for _, n in self._related(nid, "VIEWED", "out", "Vehicle"):
+            buckets["viewed"].append(_veh_dict(n))
+        for _, n in self._related(nid, "OWNS", "out", "Vehicle"):
+            buckets["owns"].append(_veh_dict(n))
+        return buckets
+
     def create_ticket(self, phone, issue, priority="normal"):
         found = self._find("Customer", phone=phone)
         if not found:
@@ -568,12 +670,20 @@ class MemoryGraph:
             ("VM-107", "Hyundai", "Tucson", 2023, 4800000, "available", "white", "suv"),
             ("VM-108", "Toyota", "Yaris", 2022, 2300000, "available", "blue", "sedan"),
         ]
+        # Service history (FICTIONAL): days since last service per vehicle.
+        # VM-106 overdue (sold to Ayesha — churn-risk demo), VM-101 due soon.
+        _now = int(time.time() * 1000)
+        _D = 24 * 3600 * 1000
+        _svc_days_ago = {"VM-101": 165, "VM-102": 40, "VM-103": 90, "VM-104": 20,
+                         "VM-105": 60, "VM-106": 210, "VM-107": 120, "VM-108": 10}
         vids = {}
         for stock_no, make, model, year, price, status, colour, body_type in vehicles:
-            vids[stock_no] = self._add_node("Vehicle", {"stock_no": stock_no, "make": make,
-                                                       "model": model, "year": year,
-                                                       "price": price, "status": status,
-                                                       "colour": colour, "body_type": body_type})
+            vids[stock_no] = self._add_node("Vehicle", {
+                "stock_no": stock_no, "make": make, "model": model,
+                "year": year, "price": price, "status": status,
+                "colour": colour, "body_type": body_type,
+                "last_service_date": _now - _svc_days_ago[stock_no] * _D,
+                "service_interval_km": 5000})
 
         customers = [
             ("Ahmed Raza", "+923001111111", 3000000, "mid"),

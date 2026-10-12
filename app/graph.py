@@ -654,3 +654,317 @@ def staff_leaderboard(graph):
         s["cb_compliance"] = round(100 * s["cb_on_time"] / s["cb_done"], 1) if s["cb_done"] else 100.0
     board.sort(key=lambda s: s["score"], reverse=True)
     return {"leaderboard": board}
+
+
+# ---------------------------------------------------------------------------
+# Trade-in valuation / Finance pre-check (pure calculation, no graph needed)
+# ---------------------------------------------------------------------------
+
+TRADEIN_BASE_PRICES = {
+    # (make, model) -> approx new price PKR (fictional demo reference values)
+    ("toyota", "corolla"): 2850000,
+    ("honda", "civic"): 4200000,
+    ("kia", "sportage"): 4950000,
+    ("suzuki", "swift"): 1950000,
+    ("toyota", "fortuner"): 8900000,
+    ("honda", "city"): 2400000,
+    ("hyundai", "tucson"): 4800000,
+    ("toyota", "yaris"): 2300000,
+}
+MAKE_MULTIPLIER = {"toyota": 1.10, "honda": 1.05, "kia": 0.95,
+                   "hyundai": 0.95, "suzuki": 0.80}
+CONDITION_MULT = {"excellent": 1.00, "good": 0.92, "fair": 0.80, "poor": 0.62}
+
+
+def valuate_tradein(make, model, year, mileage_km, condition="good"):
+    """Transparent trade-in estimate. Returns low/mid/high + calculation breakdown."""
+    import time as _t
+    mk, md = (make or "").strip().lower(), (model or "").strip().lower()
+    cond = (condition or "good").strip().lower()
+    if cond not in CONDITION_MULT:
+        cond = "good"
+    base = TRADEIN_BASE_PRICES.get((mk, md))
+    if base is None:
+        base = 2500000 * MAKE_MULTIPLIER.get(mk, 0.90)
+        base_note = f"estimated base for {make} {model} (not in reference table)"
+    else:
+        base_note = f"reference new price for {make} {model}"
+    cur_year = _t.gmtime().tm_year
+    age = max(0, cur_year - int(year or cur_year))
+    dep_factor = 0.88 ** age
+    expected_km = age * 15000
+    mileage_km = max(0, int(mileage_km or 0))
+    # Low mileage bonus / high mileage penalty, clamped
+    mileage_factor = max(0.70, min(1.10, 1.0 - (mileage_km - expected_km) / 400000))
+    cond_factor = CONDITION_MULT[cond]
+    mid = base * dep_factor * mileage_factor * cond_factor
+    steps = [
+        f"Base ({base_note}): PKR {base:,.0f}",
+        f"Age depreciation: {age} yr × 12%/yr → factor {dep_factor:.3f}",
+        f"Mileage adjustment: {mileage_km:,} km vs expected {expected_km:,} km → factor {mileage_factor:.3f}",
+        f"Condition '{cond}' → factor {cond_factor:.2f}",
+        f"Estimate = {base:,.0f} × {dep_factor:.3f} × {mileage_factor:.3f} × {cond_factor:.2f}",
+    ]
+    return {
+        "make": make, "model": model, "year": year,
+        "mileage_km": mileage_km, "condition": cond,
+        "low": round(mid * 0.92), "mid": round(mid), "high": round(mid * 1.08),
+        "breakdown": steps,
+        "note": "Fictional demo estimate — final offer needs physical inspection.",
+    }
+
+
+def finance_quote(price, down_payment, months, annual_rate_pct=22.0):
+    """EMI quote via standard reducing-balance formula."""
+    price = float(price or 0)
+    down = min(float(down_payment or 0), price)
+    n = max(1, int(months or 12))
+    principal = price - down
+    r = (float(annual_rate_pct) or 0) / 100 / 12
+    if r <= 0:
+        emi = principal / n
+    else:
+        emi = principal * r * (1 + r) ** n / ((1 + r) ** n - 1)
+    total = emi * n
+    interest = total - principal
+    first_interest = principal * r
+    return {
+        "price": round(price), "down_payment": round(down),
+        "financed": round(principal), "months": n,
+        "annual_rate_pct": annual_rate_pct,
+        "emi": round(emi), "total_payable": round(total + down),
+        "total_interest": round(interest),
+        "first_month": {"interest": round(first_interest),
+                        "principal": round(emi - first_interest)},
+        "last_month_approx": {"emi": round(emi)},
+        "note": "Demo quote at 22% p.a. reducing balance — bank terms may differ.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Test-drive bookings
+# ---------------------------------------------------------------------------
+
+TESTDRIVE_SLOTS = ["10:00", "11:30", "13:00", "14:30", "16:00", "17:30"]
+
+
+def book_testdrive(graph, customer_phone, customer_name, stock_no, date, time_slot):
+    if _is_memory(graph):
+        return graph.book_testdrive(customer_phone, customer_name, stock_no,
+                                    date, time_slot)
+    import time as _t
+    if time_slot not in TESTDRIVE_SLOTS:
+        return {"ok": False, "error": f"invalid slot (choose from {TESTDRIVE_SLOTS})"}
+    veh = graph.query("MATCH (v:Vehicle {stock_no: $s}) RETURN v.stock_no",
+                      params={"s": stock_no})
+    if not veh.result_set:
+        return {"ok": False, "error": "vehicle not found"}
+    clash = graph.query(
+        """MATCH (t:TestDrive {stock_no: $s, date: $d, time_slot: $slot})
+           WHERE t.status = 'booked' RETURN t.id LIMIT 1""",
+        params={"s": stock_no, "d": date, "slot": time_slot})
+    if clash.result_set:
+        return {"ok": False, "error": "slot already booked for this vehicle"}
+    td_id = f"TD-{int(_t.time() * 1000)}"
+    graph.query(
+        """MERGE (c:Customer {phone: $phone})
+           ON CREATE SET c.name = $name, c.segment = 'new'
+           CREATE (t:TestDrive {id: $id, customer_phone: $phone, customer_name: $name,
+                                stock_no: $s, date: $d, time_slot: $slot,
+                                status: 'booked', created_at: timestamp()})
+           CREATE (c)-[:BOOKED]->(t)""",
+        params={"id": td_id, "phone": customer_phone, "name": customer_name,
+                "s": stock_no, "d": date, "slot": time_slot})
+    return {"ok": True, "id": td_id}
+
+
+def list_testdrives(graph):
+    if _is_memory(graph):
+        return graph.list_testdrives()
+    res = graph.query(
+        """MATCH (t:TestDrive)
+           OPTIONAL MATCH (v:Vehicle {stock_no: t.stock_no})
+           RETURN t.id, t.customer_phone, t.customer_name, t.stock_no,
+                  v.make, v.model, v.year, t.date, t.time_slot, t.status
+           ORDER BY t.date, t.time_slot""")
+    return [{"id": r[0], "customer_phone": r[1], "customer_name": r[2],
+             "stock_no": r[3], "make": r[4], "model": r[5], "year": r[6],
+             "date": r[7], "time_slot": r[8], "status": r[9]}
+            for r in res.result_set]
+
+
+# ---------------------------------------------------------------------------
+# Service reminders
+# ---------------------------------------------------------------------------
+
+SERVICE_INTERVAL_DAYS = 180
+
+
+def service_due(graph):
+    """Vehicles due/overdue for service, most urgent first."""
+    import time as _t
+    now_ms = int(_t.time() * 1000)
+    day = 24 * 3600 * 1000
+    if _is_memory(graph):
+        return graph.service_due()
+    res = graph.query(
+        """MATCH (v:Vehicle)
+           OPTIONAL MATCH (c:Customer)-[:OWNS]->(v)
+           RETURN v.stock_no, v.make, v.model, v.year, v.status,
+                  v.last_service_date, v.service_interval_km,
+                  c.name, c.phone""")
+    out = []
+    for r in res.result_set:
+        last = r[5] or 0
+        due_at = last + SERVICE_INTERVAL_DAYS * day if last else 0
+        days_left = (due_at - now_ms) / day if due_at else 0
+        out.append({
+            "stock_no": r[0], "make": r[1], "model": r[2], "year": r[3],
+            "status": r[4], "last_service_date": last,
+            "service_interval_km": r[6] or 5000,
+            "owner_name": r[7], "owner_phone": r[8],
+            "days_overdue": round(-days_left) if days_left < 0 else 0,
+            "due_in_days": round(days_left) if days_left >= 0 else 0,
+            "urgency": "overdue" if days_left < 0 else
+                       "due_soon" if days_left <= 30 else "ok",
+        })
+    out.sort(key=lambda v: (0 if v["urgency"] == "overdue" else
+                            1 if v["urgency"] == "due_soon" else 2,
+                            -v["days_overdue"]))
+    return {"reminders": out, "interval_days": SERVICE_INTERVAL_DAYS}
+
+
+# ---------------------------------------------------------------------------
+# "Brain remembers" — full customer memory card
+# ---------------------------------------------------------------------------
+
+def customer_memory(graph, phone):
+    """Everything the brain knows about a customer, in one card."""
+    cust = find_customer_by_phone(graph, phone)
+    if not cust:
+        return {"error": "customer not found", "phone": phone}
+    hist = customer_history(graph, phone)
+    promises = [p for p in list_promises(graph)
+                if p.get("customer_phone") == phone and p.get("status") == "pending"]
+    callbacks = [c for c in list_callbacks(graph)
+                 if c.get("customer_phone") == phone and c.get("status") == "pending"]
+    if _is_memory(graph):
+        veh = graph.customer_vehicles(phone)
+    else:
+        res = graph.query(
+            """MATCH (c:Customer {phone: $phone})-[r:INTERESTED_IN|VIEWED|OWNS]->(v:Vehicle)
+               RETURN type(r), v.stock_no, v.make, v.model, v.year, v.price,
+                      v.colour, v.body_type""",
+            params={"phone": phone})
+        veh = {"interested_in": [], "viewed": [], "owns": []}
+        for r in res.result_set:
+            entry = {"stock_no": r[1], "make": r[2], "model": r[3], "year": r[4],
+                     "price": r[5], "colour": r[6], "body_type": r[7]}
+            key = {"INTERESTED_IN": "interested_in", "VIEWED": "viewed",
+                   "OWNS": "owns"}.get(r[0])
+            if key:
+                veh[key].append(entry)
+    # inferred preferences
+    bodies, makes = {}, {}
+    for bucket in ("interested_in", "viewed"):
+        for v in veh.get(bucket, []):
+            b, m = (v.get("body_type") or "").lower(), (v.get("make") or "").lower()
+            if b:
+                bodies[b] = bodies.get(b, 0) + 1
+            if m:
+                makes[m] = makes.get(m, 0) + 1
+    inferred = {
+        "preferred_body_types": sorted(bodies, key=bodies.get, reverse=True)[:3],
+        "preferred_makes": sorted(makes, key=makes.get, reverse=True)[:3],
+    }
+    return {
+        "customer": cust,
+        "vehicles": veh,
+        "tickets": hist["tickets"],
+        "conversations": hist["conversations"],
+        "pending_promises": promises,
+        "pending_callbacks": callbacks,
+        "inferred_preferences": inferred,
+        "memory_note": "Every chat turn is written back to the graph as a Conversation node.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# n8n webhook alert for broken promises
+# ---------------------------------------------------------------------------
+
+def send_promise_alert(graph, pr_id):
+    """Build the n8n payload for an overdue promise; POST it if a webhook is configured."""
+    import json as _json
+    import time as _t
+    import urllib.request as _urlreq
+    target = next((p for p in list_promises(graph) if p.get("id") == pr_id), None)
+    if not target:
+        return {"ok": False, "error": "promise not found"}
+    now = int(_t.time() * 1000)
+    overdue_ms = max(0, now - (target.get("deadline_at") or now))
+    d, h = divmod(overdue_ms // 60000, 24 * 60)
+    overdue_txt = f"{d}d {h // 60}h" if d else f"{h // 60}h {(h % 60)}m"
+    wa_msg = (
+        f"Hi {target.get('staff')}, this is Dealership Brain. Your promise to "
+        f"{target.get('customer_name')} — “{target.get('promise')}” — is overdue by "
+        f"{overdue_txt}. Please call the customer ({target.get('customer_phone')}) "
+        f"today with an update. — Velocity Motors"
+    )
+    payload = {
+        "event": "promise_overdue",
+        "promise_id": pr_id,
+        "customer": {"name": target.get("customer_name"),
+                     "phone": target.get("customer_phone")},
+        "staff": target.get("staff"),
+        "promise": target.get("promise"),
+        "deadline_at": target.get("deadline_at"),
+        "overdue_ms": overdue_ms,
+        "suggested_whatsapp_message": wa_msg,
+        "source": "dealership-brain",
+    }
+    url = os.environ.get("N8N_WEBHOOK_URL", "").strip()
+    if not url:
+        return {"ok": True, "sent": False,
+                "reason": "N8N_WEBHOOK_URL not configured — showing payload preview",
+                "payload": payload}
+    try:
+        req = _urlreq.Request(url, data=_json.dumps(payload).encode(),
+                              headers={"Content-Type": "application/json"})
+        with _urlreq.urlopen(req, timeout=8) as resp:
+            return {"ok": True, "sent": True, "http_status": resp.status,
+                    "payload": payload}
+    except Exception as e:
+        return {"ok": False, "sent": False,
+                "error": f"webhook POST failed: {type(e).__name__}: {e}",
+                "payload": payload}
+    import time as _t
+    now = int(_t.time() * 1000)
+    res = graph.query("MATCH (s:Staff) RETURN s.name, s.role")
+    staff = {r[0]: {"name": r[0], "role": r[1], "cb_total": 0, "cb_done": 0,
+                    "cb_on_time": 0, "pr_total": 0, "pr_kept": 0, "pr_overdue": 0}
+             for r in res.result_set}
+    res = graph.query("MATCH (c:Callback) RETURN c.staff, c.status, c.done_on_time, c.promised_at")
+    for r in res.result_set:
+        s = staff.setdefault(r[0], {"name": r[0], "role": "", "cb_total": 0, "cb_done": 0,
+                                    "cb_on_time": 0, "pr_total": 0, "pr_kept": 0, "pr_overdue": 0})
+        s["cb_total"] += 1
+        if r[1] == "done":
+            s["cb_done"] += 1
+            if r[2]:
+                s["cb_on_time"] += 1
+    res = graph.query("MATCH (p:Promise) RETURN p.staff, p.status, p.deadline_at")
+    for r in res.result_set:
+        s = staff.setdefault(r[0], {"name": r[0], "role": "", "cb_total": 0, "cb_done": 0,
+                                    "cb_on_time": 0, "pr_total": 0, "pr_kept": 0, "pr_overdue": 0})
+        s["pr_total"] += 1
+        if r[1] == "done":
+            s["pr_kept"] += 1
+        elif (r[2] or 0) < now:
+            s["pr_overdue"] += 1
+    board = list(staff.values())
+    for s in board:
+        s["score"] = s["cb_on_time"] * 10 + s["pr_kept"] * 10 + s["cb_done"] * 2
+        s["cb_compliance"] = round(100 * s["cb_on_time"] / s["cb_done"], 1) if s["cb_done"] else 100.0
+    board.sort(key=lambda s: s["score"], reverse=True)
+    return {"leaderboard": board}
