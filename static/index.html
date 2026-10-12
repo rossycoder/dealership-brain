@@ -128,6 +128,49 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
   border:1px solid var(--bad);color:#fecaca;padding:12px 20px;border-radius:14px;font-size:13.5px;opacity:0;
   pointer-events:none;transition:.3s;z-index:99;max-width:90vw}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* ---------- markdown in chat ---------- */
+.msg.bot table{border-collapse:collapse;margin:10px 0;font-size:12.5px;width:100%}
+.msg.bot th,.msg.bot td{border:1px solid var(--line);padding:7px 10px;text-align:left}
+.msg.bot th{background:rgba(139,92,246,.14);color:#c4b5fd;font-weight:700;font-size:11px;
+  text-transform:uppercase;letter-spacing:.4px}
+.msg.bot ul{margin:8px 0;padding-left:20px}
+.msg.bot li{margin:4px 0}
+/* ---------- new feature panes ---------- */
+.badge{font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:999px;letter-spacing:.4px;text-transform:uppercase}
+.badge.overdue{background:rgba(248,113,113,.14);border:1px solid rgba(248,113,113,.5);color:#fca5a5}
+.badge.due{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.45);color:#fcd34d}
+.badge.done{background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.45);color:#a7f3d0}
+.cbrow,.prrow{padding:11px 13px;border:1px solid var(--line);background:rgba(255,255,255,.02);
+  border-radius:12px;margin-bottom:9px;font-size:13px;animation:fade .3s ease}
+.cbrow.overdue{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.05)}
+.cbrow b,.prrow b{color:var(--txt)}
+.cbrow .sub,.prrow .sub{color:var(--dim);font-size:12px;margin-top:4px}
+.cbrow .rowhead,.prrow .rowhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px}
+.mini{font-size:11.5px;font-weight:700;padding:6px 12px;border-radius:10px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--txt);cursor:pointer;transition:.2s;margin-top:8px}
+.mini:hover{border-color:var(--ok);color:var(--ok)}
+.mini.warn:hover{border-color:var(--warn);color:var(--warn)}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.stat{background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:center}
+.stat b{display:block;font-size:20px;color:var(--txt)}
+.stat span{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.4px}
+.formgrid{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.formgrid input,.formgrid select{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;
+  color:var(--txt);padding:9px 12px;font-size:12.5px;font-family:inherit;outline:none}
+.formgrid input:focus{border-color:var(--vio)}
+.formgrid label{font-size:10.5px;font-weight:700;letter-spacing:.5px;color:var(--faint);text-transform:uppercase}
+/* service stage timeline */
+.stages{display:flex;gap:0;margin:10px 0;overflow-x:auto}
+.stage{flex:1;min-width:64px;text-align:center;font-size:10px;color:var(--faint);position:relative;padding-top:16px}
+.stage::before{content:'';position:absolute;top:5px;left:50%;transform:translateX(-50%);
+  width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid var(--line)}
+.stage.hit{color:var(--cy);font-weight:700}
+.stage.hit::before{background:var(--cy);box-shadow:0 0 8px var(--cy)}
+.stage::after{content:'';position:absolute;top:10px;left:calc(-50% + 8px);right:calc(50% + 8px);height:1px;background:var(--line)}
+.stage:first-child::after{display:none}
+.stage.hit::after{background:rgba(34,211,238,.4)}
+.wamsg{background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.3);border-radius:12px;
+  padding:11px 13px;font-size:12.5px;line-height:1.55;color:#d1fae5;margin-top:8px;white-space:pre-wrap}
 /* ---------- anims ---------- */
 @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @keyframes pop{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:none}}
@@ -180,15 +223,24 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
         <div class="card-h" style="border:none;padding:0 0 4px"><h3><span class="sg">Manager</span> tools</h3></div>
         <button class="btn ghost" onclick="showChurn()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-6 4 3 5-8"/></svg>Churn-risk report</button>
         <button class="btn ghost" onclick="showStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.5 8.5l7 7M18 6a3 3 0 100-6"/></svg>Graph stats <span style="color:var(--faint);font-size:11px">(live Cypher)</span></button>
+        <button class="btn ghost" onclick="showCallbacks()">📞 Callback SLA <span id="cbAlert" style="margin-left:auto"></span></button>
+        <button class="btn ghost" onclick="showPromises()">🤝 Promise tracker <span id="prAlert" style="margin-left:auto"></span></button>
+        <button class="btn ghost" onclick="showService()">🔧 Service updates</button>
         <button class="btn ghost" onclick="reseed()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-2.6-6.4M21 4v5h-5"/></svg>Reset demo data</button>
       </div>
       <div class="card">
         <div class="tabs">
           <div class="tab on" onclick="tab('trace',this)">Trace</div>
+          <div class="tab" onclick="tab('callbacks',this)">Callbacks</div>
+          <div class="tab" onclick="tab('promises',this)">Promises</div>
+          <div class="tab" onclick="tab('service',this)">Service</div>
           <div class="tab" onclick="tab('churn',this)">Churn</div>
           <div class="tab" onclick="tab('graph',this)">Graph</div>
         </div>
         <div class="pane on scroll" id="pane-trace"><pre class="trace" id="trace">Agent trace appears here after your first message…</pre></div>
+        <div class="pane scroll" id="pane-callbacks"><div id="cbBody" style="color:var(--dim);font-size:13px">Loading callbacks…</div></div>
+        <div class="pane scroll" id="pane-promises"><div id="prBody" style="color:var(--dim);font-size:13px">Loading promises…</div></div>
+        <div class="pane scroll" id="pane-service"><div id="svcBody" style="color:var(--dim);font-size:13px">Loading tickets…</div></div>
         <div class="pane scroll" id="pane-churn"><div id="churnBody" style="color:var(--dim);font-size:13px">Run the churn-risk report to see customers the graph flags.</div></div>
         <div class="pane scroll" id="pane-graph"><div id="graphBody" style="color:var(--dim);font-size:13px">Run “Graph stats” to query live node counts.</div></div>
       </div>
@@ -214,13 +266,62 @@ function addMsg(cls,who,html,tags){
     (tags&&tags.length?`<div class="meta">${tags.map(t=>`<span class="tag ${t.c||''}">${esc(t.t)}</span>`).join('')}</div>`:'');
   chat.appendChild(d);chat.scrollTop=chat.scrollHeight;return d;
 }
+/* Minimal markdown renderer for agent replies: tables, bold, bullets, newlines.
+   Fixes the "raw | pipes |" bug — LLM tables now render as real HTML tables. */
+function md2html(src){
+  const lines=String(src??'').split('\n');
+  let html='',i=0;
+  const inline=s=>esc(s).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  while(i<lines.length){
+    const line=lines[i];
+    // markdown table: header row + separator row (|---|---|)
+    if(/^\s*\|.*\|\s*$/.test(line)&&i+1<lines.length&&/^\s*\|[\s:|-]+\|\s*$/.test(lines[i+1])){
+      const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>inline(c.trim()));
+      html+='<table><thead><tr>'+cells(line).map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>';
+      i+=2;
+      while(i<lines.length&&/^\s*\|.*\|\s*$/.test(lines[i])){
+        html+='<tr>'+cells(lines[i]).map(c=>'<td>'+c+'</td>').join('')+'</tr>';i++;
+      }
+      html+='</tbody></table>';continue;
+    }
+    // bullet list
+    if(/^\s*[-*]\s+/.test(line)){
+      html+='<ul>';
+      while(i<lines.length&&/^\s*[-*]\s+/.test(lines[i])){
+        html+='<li>'+inline(lines[i].replace(/^\s*[-*]\s+/,''))+'</li>';i++;
+      }
+      html+='</ul>';continue;
+    }
+    // numbered list
+    if(/^\s*\d+\.\s+/.test(line)){
+      html+='<ol>';
+      while(i<lines.length&&/^\s*\d+\.\s+/.test(lines[i])){
+        html+='<li>'+inline(lines[i].replace(/^\s*\d+\.\s+/,''))+'</li>';i++;
+      }
+      html+='</ol>';continue;
+    }
+    html+=(line.trim()?inline(line)+'<br>':'<br>');i++;
+  }
+  return html;
+}
 function typing(){const d=document.createElement('div');d.className='msg bot';d.id='typing';
-  d.innerHTML='<div class="typing"><span></span><span></span><span></span></div>';chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
+  d.innerHTML='<div class="typing"><span></span><span></span><span></span></div><div style="font-size:11.5px;color:var(--faint);margin-top:6px">Agent is thinking…</div>';chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
 function untype(){const t=$('typing');if(t)t.remove();}
+
+/* Identity change: clear the previous customer's conversation (no leaking). */
+let lastPhone='';
+function checkIdentity(phone){
+  if(lastPhone&&phone&&phone!==lastPhone){
+    chat.innerHTML='';
+    addMsg('bot','System',`New session started for <b>${esc(phone)}</b>. Previous conversation cleared — no memory leaks between customers.`,[{t:'privacy',c:'g'}]);
+  }
+  lastPhone=phone;
+}
 
 async function send(){
   const phone=$('phone').value.trim(),name=$('name').value.trim(),message=$('msg').value.trim();
   if(!message)return;
+  checkIdentity(phone);
   $('msg').value='';$('sendBtn').disabled=true;
   addMsg('user',esc(phone||'you'),esc(message));
   typing();
@@ -230,7 +331,7 @@ async function send(){
     if(!r.ok)throw new Error('server '+r.status);
     const j=await r.json();untype();
     addMsg('bot',esc(j.agent||'agent')+' agent',
-      esc(j.reply||'(no reply)').replace(/\n/g,'<br>'),
+      md2html(j.reply||'(no reply)'),
       [{t:'intent: '+(j.intent||'?'),c:'v'},{t:'llm: '+(j.llm_provider||'?')},
        {t:j.returning_customer?'returning customer':'new customer',c:j.returning_customer?'g':''}]);
     traceEl.textContent='TRACE · '+new Date().toLocaleTimeString()+'\n'+JSON.stringify(
@@ -252,12 +353,22 @@ function setListening(on){
 }
 function stopRecog(){if(recog){try{recog.stop();}catch(e){}}}
 function micToggle(){
-  if(!SR){toast('Voice input is not supported in this browser.');return;}
+  if(!SR){toast('Voice input is not supported in this browser — try Chrome.');return;}
   if(listening){stopRecog();return;} // tap again to stop
+  // Immediate visible feedback BEFORE the permission prompt appears
+  $('micStatus').textContent='🎤 Requesting microphone access… click “Allow” in the browser prompt';
+  setListening(true);
   const rec=new SR();
   rec.lang='en-US';rec.interimResults=true;rec.maxAlternatives=1;
   baseText=$('msg').value.trim();
-  rec.onstart=()=>setListening(true);
+  let started=false;
+  rec.onstart=()=>{started=true;
+    $('micStatus').textContent='🎤 Listening… speak now (tap 🎤 to stop)';};
+  // If the browser never fires onstart (no prompt surfaced), say so plainly.
+  const startTimeout=setTimeout(()=>{
+    if(!started){setListening(false);
+      toast('No microphone prompt appeared — check the site permission icon in the address bar.');}
+  },6000);
   rec.onresult=e=>{
     let finalTxt='',interimTxt='';
     for(const r of e.results){const t=r[0].transcript;if(r.isFinal)finalTxt+=t;else interimTxt+=t;}
@@ -265,9 +376,9 @@ function micToggle(){
     $('msg').value=(baseText+(baseText&&spoken?' ':'')+spoken).trim();
     $('msg').focus();
   };
-  rec.onend=()=>setListening(false);
+  rec.onend=()=>{clearTimeout(startTimeout);setListening(false);};
   rec.onerror=e=>{
-    setListening(false);
+    clearTimeout(startTimeout);setListening(false);
     if(e.error==='not-allowed'||e.error==='service-not-allowed')
       toast('Microphone access denied — allow mic permission and try again.');
     else if(e.error==='no-speech')
@@ -275,7 +386,7 @@ function micToggle(){
     else if(e.error!=='aborted')
       toast('Voice input error: '+e.error);
   };
-  try{recog=rec;rec.start();}catch(e){setListening(false);toast('Could not start voice input: '+e.message);}
+  try{recog=rec;rec.start();}catch(e){clearTimeout(startTimeout);setListening(false);toast('Could not start voice input: '+e.message);}
 }
 
 async function showChurn(){
@@ -300,10 +411,161 @@ async function showStats(){
   }catch(e){b.textContent='Failed: '+e.message;toast('Graph stats failed: '+e.message);}
 }
 async function reseed(){
+  if(!confirm('Reset ALL demo data? This wipes the shared demo graph (callbacks, promises, tickets too).'))return;
   try{await fetch('/api/seed',{method:'POST'});
+    chat.innerHTML='';
     addMsg('bot','System','Demo data has been reset to the fictional “Velocity Motors” dataset.',[{t:'reset',c:'v'}]);
     toast('Demo data reset.');
+    refreshBadges();
   }catch(e){toast('Reset failed: '+e.message);}
+}
+
+// ================= CALLBACK SLA TRACKER =================
+function fmtDur(ms){
+  if(ms<0)ms=0;
+  const m=Math.floor(ms/60000),h=Math.floor(m/60),d=Math.floor(h/24);
+  if(d>0)return d+'d '+(h%24)+'h';
+  if(h>0)return h+'h '+(m%60)+'m';
+  return m+'m';
+}
+async function showCallbacks(){
+  goTab('callbacks');const b=$('cbBody');
+  b.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> loading callbacks…';
+  try{
+    const [cb,stats]=await Promise.all([
+      (await fetch('/api/callbacks')).json(),
+      (await fetch('/api/callbacks/stats')).json()]);
+    const rows=(cb.callbacks||[]);
+    b.innerHTML=
+      `<div class="statgrid">
+        <div class="stat"><b>${stats.compliance_pct}%</b><span>on-time compliance</span></div>
+        <div class="stat"><b style="color:${stats.overdue_now?'var(--bad)':'var(--ok)'}">${stats.overdue_now}</b><span>overdue now</span></div>
+      </div>`+
+      (rows.length?rows.map(c=>{
+        const badge=c.status==='done'
+          ?`<span class="badge done">done${c.done_on_time?' ✓':' (late)'}</span>`
+          :c.overdue?`<span class="badge overdue">overdue ${fmtDur(c.overdue_ms)}</span>`
+          :`<span class="badge due">due in ${fmtDur(c.due_in_ms)}</span>`;
+        return `<div class="cbrow${c.overdue&&c.status!=='done'?' overdue':''}">
+          <div class="rowhead"><b>${esc(c.topic||'(no topic)')}</b>${badge}</div>
+          <div class="sub">👤 ${esc(c.customer_name)} · ${esc(c.customer_phone)}<br>🧑‍💼 ${esc(c.staff)} · promised ${new Date(c.promised_at).toLocaleString()}</div>
+          ${c.status!=='done'?`<button class="mini" onclick="completeCallback('${esc(c.id)}')">✓ Mark done</button>`:''}
+        </div>`;
+      }).join(''):'<div style="color:var(--dim)">No callbacks yet.</div>')+
+      `<div class="formgrid" style="margin-top:12px">
+        <label>Log a callback promise (demo)</label>
+        <input id="cbName" placeholder="Customer name">
+        <input id="cbPhone" placeholder="Customer phone e.g. +923006666666">
+        <input id="cbTopic" placeholder="Topic e.g. Test drive follow-up">
+        <input id="cbHours" type="number" step="0.5" value="2" placeholder="Promised in (hours)">
+        <button class="btn ghost" onclick="addCallback()">+ Log callback</button>
+        <button class="btn ghost" onclick="simulateMissedCallback()" title="Demo: create an already-overdue callback and watch the escalation">⚡ Simulate missed callback</button>
+      </div>`;
+  }catch(e){b.textContent='Failed: '+e.message;}
+}
+async function addCallback(){
+  const body={customer_name:$('cbName').value.trim(),customer_phone:$('cbPhone').value.trim()||'+923000000000',
+    topic:$('cbTopic').value.trim()||'Follow-up call',promised_in_hours:parseFloat($('cbHours').value)||2};
+  await fetch('/api/callbacks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  showCallbacks();refreshBadges();
+}
+async function simulateMissedCallback(){
+  await fetch('/api/callbacks',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({customer_name:'Demo Customer',customer_phone:'+923007777777',
+      staff:'Usman Tariq',topic:'Promised callback — never made',promised_in_hours:-3})});
+  await showCallbacks();refreshBadges();
+  addMsg('bot','Manager escalation',
+    md2html(`🚨 **ESCALATION — missed callback SLA**\n\n- Customer: Demo Customer (+923007777777)\n- Promised: 3h ago · Staff: Usman Tariq\n- **Auto-message sent to customer:** "Sorry for the delay — your advisor will call you by 6 PM today."\n- Manager notified. Compliance rate updated.`),
+    [{t:'escalation',c:'v'},{t:'auto-message',c:'g'}]);
+  toast('Missed callback simulated — escalation fired.');
+}
+async function completeCallback(id){
+  await fetch('/api/callbacks/'+encodeURIComponent(id)+'/done',{method:'POST'});
+  showCallbacks();refreshBadges();
+}
+async function refreshBadges(){
+  try{
+    const [cb,pr]=await Promise.all([
+      (await fetch('/api/callbacks/stats')).json(),
+      (await fetch('/api/promises')).json()]);
+    $('cbAlert').innerHTML=cb.overdue_now?`<span class="badge overdue">${cb.overdue_now} overdue</span>`:'';
+    const od=(pr.promises||[]).filter(p=>p.overdue&&p.status!=='done').length;
+    $('prAlert').innerHTML=od?`<span class="badge overdue">${od} overdue</span>`:'';
+  }catch(e){}
+}
+
+// ================= PROMISE TRACKER =================
+async function showPromises(){
+  goTab('promises');const b=$('prBody');
+  b.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> loading promises…';
+  try{
+    const j=await (await fetch('/api/promises')).json();
+    const rows=j.promises||[];
+    b.innerHTML=(rows.length?rows.map(p=>{
+      const badge=p.status==='done'?`<span class="badge done">kept ✓</span>`
+        :p.overdue?`<span class="badge overdue">broken · ${fmtDur(p.overdue_ms)} late</span>`
+        :`<span class="badge due">due in ${fmtDur(p.due_in_ms)}</span>`;
+      return `<div class="prrow${p.overdue&&p.status!=='done'?' overdue':''}" style="${p.overdue&&p.status!=='done'?'border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.05)':''}">
+        <div class="rowhead"><b>“${esc(p.promise)}”</b>${badge}</div>
+        <div class="sub">👤 ${esc(p.customer_name)} · 🧑‍💼 promised by ${esc(p.staff)}<br>deadline ${new Date(p.deadline_at).toLocaleString()}</div>
+        ${p.status!=='done'?`<button class="mini" onclick="completePromise('${esc(p.id)}')">✓ Mark kept</button>`:''}
+      </div>`;
+    }).join(''):'<div style="color:var(--dim)">No promises logged yet.</div>')+
+    `<div class="formgrid" style="margin-top:12px">
+      <label>Log a staff promise (demo)</label>
+      <input id="prName" placeholder="Customer name">
+      <input id="prPhone" placeholder="Customer phone">
+      <input id="prText" placeholder="Promise e.g. Spare key couriered tomorrow">
+      <input id="prDays" type="number" step="0.5" value="2" placeholder="Deadline in (days)">
+      <button class="btn ghost" onclick="addPromise()">+ Log promise</button>
+    </div>`;
+  }catch(e){b.textContent='Failed: '+e.message;}
+}
+async function addPromise(){
+  const body={customer_name:$('prName').value.trim(),customer_phone:$('prPhone').value.trim()||'+923000000000',
+    promise:$('prText').value.trim()||'Follow up with customer',deadline_in_days:parseFloat($('prDays').value)||2};
+  await fetch('/api/promises',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  showPromises();refreshBadges();
+}
+async function completePromise(id){
+  await fetch('/api/promises/'+encodeURIComponent(id)+'/done',{method:'POST'});
+  showPromises();refreshBadges();
+}
+
+// ================= SERVICE PROGRESS UPDATES =================
+const STAGE_LABEL={received:'Received',diagnosing:'Diagnosing',parts_ordered:'Parts ordered',
+  in_progress:'In progress',quality_check:'Quality check',ready:'Ready 🎉'};
+async function showService(){
+  goTab('service');const b=$('svcBody');
+  b.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> loading tickets…';
+  try{
+    const j=await (await fetch('/api/tickets')).json();
+    const stages=j.stages||[],rows=j.tickets||[];
+    b.innerHTML=rows.length?rows.map(t=>{
+      const idx=stages.indexOf(t.stage||'received');
+      const bar=stages.map((s,i)=>`<div class="stage${i<=idx?' hit':''}">${STAGE_LABEL[s]||s}</div>`).join('');
+      return `<div class="cbrow">
+        <div class="rowhead"><b>${esc(t.id)}</b>
+          <span class="badge ${t.stage==='ready'?'done':t.priority==='high'?'overdue':'due'}">${esc(STAGE_LABEL[t.stage]||t.stage)}</span></div>
+        <div class="sub">👤 ${esc(t.customer_name)} · ${esc(t.issue)}</div>
+        <div class="stages">${bar}</div>
+        ${t.stage!=='ready'
+          ?`<button class="mini" onclick="advanceTicket('${esc(t.id)}')">➜ Advance stage &amp; notify customer</button>`
+          :'<div class="sub" style="color:var(--ok)">Completed — customer notified.</div>'}
+        <div id="wa-${esc(t.id)}"></div>
+      </div>`;
+    }).join(''):'<div style="color:var(--dim)">No tickets.</div>';
+  }catch(e){b.textContent='Failed: '+e.message;}
+}
+async function advanceTicket(id){
+  try{
+    const j=await (await fetch('/api/tickets/'+encodeURIComponent(id)+'/advance',{method:'POST'})).json();
+    if(!j.ok)throw new Error(j.error||'advance failed');
+    const slot=$('wa-'+CSS.escape(id));
+    if(slot)slot.innerHTML=`<div class="wamsg">📲 <b>WhatsApp-style update sent to customer:</b>\n${esc(j.customer_message)}</div>`;
+    toast('Ticket '+id+' → '+j.stage+'. Customer notified.');
+    setTimeout(showService,1800);
+  }catch(e){toast('Advance failed: '+e.message);}
 }
 
 // suggestions
@@ -320,6 +582,7 @@ function chipSend(el){$('msg').value=el.textContent;send();}
   addMsg('bot','Dealership Brain',
     'Welcome to <b>Velocity Motors</b>. I remember our customers across visits — try a suggestion below, then <b>change the phone number</b> to meet a brand-new customer with no memory.',
     [{t:'falkordb memory',c:'v'},{t:'multi-agent',c:'g'}]);
+  refreshBadges();
 })();
 </script>
 </body>
