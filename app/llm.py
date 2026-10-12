@@ -67,9 +67,11 @@ def heuristic_intent(text: str) -> str:
 def heuristic_reply(intent: str, context: dict) -> str:
     """Build a reply from graph context. Clearly heuristic."""
     name = context.get("customer", {}).get("name") or "there"
-    returning = bool(context.get("history", {}).get("conversations"))
+    # Honest memory: only claim to remember when there are prior conversations.
+    returning = bool(context.get("returning"))
     vehicles = context.get("vehicles", [])
     policies = context.get("policies", [])
+    no_match = context.get("no_match")
 
     parts = []
     if returning:
@@ -77,10 +79,18 @@ def heuristic_reply(intent: str, context: dict) -> str:
     else:
         parts.append(f"Hi {name}!")
 
-    if intent == "sales" and vehicles:
-        lines = [f"- {v['year']} {v['make']} {v['model']} at PKR {v['price']:,} ({v['stock_no']})" for v in vehicles[:4]]
-        parts.append("Based on your budget, these are available:\n" + "\n".join(lines))
-        parts.append("Want to book a free 30-minute test drive for any of these?")
+    if intent == "sales":
+        if no_match:
+            parts.append(
+                f"We don't currently have a {no_match['desc']} within your budget of "
+                f"PKR {no_match['budget']:,}.")
+            parts.append("Want me to notify you when one arrives, or shall I show the closest alternatives?")
+        elif vehicles:
+            lines = [f"- {v['year']} {v['make']} {v['model']} ({v.get('colour','')}, {v.get('body_type','')}) at PKR {v['price']:,} ({v['stock_no']})" for v in vehicles[:4]]
+            parts.append("Based on your budget, these are available:\n" + "\n".join(lines))
+            parts.append("Want to book a free 30-minute test drive for any of these?")
+        else:
+            parts.append("I couldn't find any vehicles within that budget right now.")
     elif intent == "service":
         tickets = context.get("history", {}).get("tickets", [])
         if tickets:
@@ -112,10 +122,27 @@ def classify_intent(text: str, context_hint: str = "") -> tuple[str, str]:
 def draft_reply(intent: str, context: dict) -> tuple[str, str]:
     """Returns (reply_text, provider_label)."""
     if _llm_active():
+        returning = bool(context.get("returning"))
+        memory_rule = (
+            "MEMORY RULE: this customer is RETURNING (past conversations exist) — "
+            "you may reference what you remember."
+            if returning else
+            "MEMORY RULE: this customer is NEW (no prior conversations) — "
+            "NEVER claim to remember them, NEVER say 'welcome back' or 'I remember you'. "
+            "Greet them as a first-time visitor."
+        )
+        no_match = context.get("no_match")
+        filter_rule = (
+            f" FILTER RULE: no vehicles match the requested filters ({no_match['desc']}) "
+            f"within budget PKR {no_match['budget']:,}. Say so honestly; "
+            "do NOT list unrelated vehicles."
+            if no_match else ""
+        )
         system = (
             "You are a helpful car dealership assistant. Answer concisely using ONLY "
             "the provided context (customer history, vehicles, policies). "
-            "If context is missing, say so honestly. Never invent prices or policies."
+            "If context is missing, say so honestly. Never invent prices or policies. "
+            + memory_rule + filter_rule
         )
         user = f"Intent: {intent}\nContext: {context}\nCustomer message: {context.get('message','')}"
         llm_text, label = _llm_chat(system, user)

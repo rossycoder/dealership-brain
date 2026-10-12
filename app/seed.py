@@ -11,7 +11,7 @@ DEMO = True  # marker: this file only ever writes fictional demo data
 
 
 def seed():
-    graph, mode = get_graph()
+    graph, mode = get_graph(auto_seed=False)
     print(f"FalkorDB mode: {mode}")
     wipe_graph(graph)
     ensure_schema(graph)
@@ -33,14 +33,14 @@ def seed():
 
     # --- Vehicles (fictional inventory) ---
     graph.query("""
-        CREATE (:Vehicle {stock_no:'VM-101', make:'Toyota', model:'Corolla', year:2023, price:2850000, status:'available'}),
-               (:Vehicle {stock_no:'VM-102', make:'Honda', model:'Civic', year:2024, price:4200000, status:'available'}),
-               (:Vehicle {stock_no:'VM-103', make:'Kia', model:'Sportage', year:2023, price:5100000, status:'available'}),
-               (:Vehicle {stock_no:'VM-104', make:'Suzuki', model:'Swift', year:2022, price:1950000, status:'available'}),
-               (:Vehicle {stock_no:'VM-105', make:'Toyota', model:'Fortuner', year:2024, price:8900000, status:'available'}),
-               (:Vehicle {stock_no:'VM-106', make:'Honda', model:'City', year:2021, price:2400000, status:'sold'}),
-               (:Vehicle {stock_no:'VM-107', make:'Hyundai', model:'Tucson', year:2023, price:4800000, status:'available'}),
-               (:Vehicle {stock_no:'VM-108', make:'Toyota', model:'Yaris', year:2022, price:2300000, status:'available'})
+        CREATE (:Vehicle {stock_no:'VM-101', make:'Toyota', model:'Corolla', year:2023, price:2850000, status:'available', colour:'white', body_type:'sedan'}),
+               (:Vehicle {stock_no:'VM-102', make:'Honda', model:'Civic', year:2024, price:4200000, status:'available', colour:'red', body_type:'sedan'}),
+               (:Vehicle {stock_no:'VM-103', make:'Kia', model:'Sportage', year:2023, price:4950000, status:'available', colour:'black', body_type:'suv'}),
+               (:Vehicle {stock_no:'VM-104', make:'Suzuki', model:'Swift', year:2022, price:1950000, status:'available', colour:'silver', body_type:'hatchback'}),
+               (:Vehicle {stock_no:'VM-105', make:'Toyota', model:'Fortuner', year:2024, price:8900000, status:'available', colour:'black', body_type:'suv'}),
+               (:Vehicle {stock_no:'VM-106', make:'Honda', model:'City', year:2021, price:2400000, status:'sold', colour:'grey', body_type:'sedan'}),
+               (:Vehicle {stock_no:'VM-107', make:'Hyundai', model:'Tucson', year:2023, price:4800000, status:'available', colour:'white', body_type:'suv'}),
+               (:Vehicle {stock_no:'VM-108', make:'Toyota', model:'Yaris', year:2022, price:2300000, status:'available', colour:'blue', body_type:'sedan'})
     """)
 
     # --- Customers (fictional) ---
@@ -81,14 +81,45 @@ def seed():
     # --- Tickets (one high-priority open -> churn-risk demo) ---
     graph.query("""
         MATCH (c:Customer {phone:'+923004444444'})
-        CREATE (t:Ticket {id:'T-9001', issue:'Service appointment delayed twice', status:'open', priority:'high', created: 1728500002000})
+        CREATE (t:Ticket {id:'T-9001', issue:'Service appointment delayed twice', status:'open', priority:'high', stage:'diagnosing', created: 1728500002000})
         CREATE (c)-[:REPORTED]->(t)
         """)
     graph.query("""
         MATCH (c:Customer {phone:'+923003333333'})
-        CREATE (t:Ticket {id:'T-9002', issue:'Scratch on delivered Swift bumper', status:'open', priority:'normal', created: 1728500003000})
+        CREATE (t:Ticket {id:'T-9002', issue:'Scratch on delivered Swift bumper', status:'open', priority:'normal', stage:'received', created: 1728500003000})
         CREATE (c)-[:REPORTED]->(t)
         """)
+
+    # --- Callback promises (FICTIONAL): "nobody returns my calls" ---
+    import time as _t
+    _now = int(_t.time() * 1000)
+    _H = 3600 * 1000
+    graph.query("""
+        CREATE (:Callback {id:'CB-1', customer_phone:'+923001111111', customer_name:'Ahmed Raza',
+                           staff:'Usman Tariq', topic:'Service appointment confirmation',
+                           promised_at: $p1, created_at: $c1, status:'pending'}),
+               (:Callback {id:'CB-2', customer_phone:'+923002222222', customer_name:'Fatima Noor',
+                           staff:'Bilal Ahmed', topic:'Test drive follow-up (Sportage)',
+                           promised_at: $p2, created_at: $c2, status:'pending'}),
+               (:Callback {id:'CB-3', customer_phone:'+923003333333', customer_name:'Danish Ali',
+                           staff:'Usman Tariq', topic:'Warranty claim update',
+                           promised_at: $p3, created_at: $c3, status:'done',
+                           done_at: $d3, done_on_time: true})
+        """, params={"p1": _now - 2 * _H, "c1": _now - 5 * _H,
+                     "p2": _now + 3 * _H, "c2": _now - 1 * _H,
+                     "p3": _now - 26 * _H, "c3": _now - 30 * _H, "d3": _now - 25 * _H})
+
+    # --- Staff promises (FICTIONAL): "promised a spare key, 24 days..." ---
+    _D = 24 * _H
+    graph.query("""
+        CREATE (:Promise {id:'PR-1', customer_phone:'+923004444444', customer_name:'Ayesha Malik',
+                          staff:'Bilal Ahmed', promise:'Spare key will be couriered to customer',
+                          deadline_at: $d1, created_at: $c1, status:'pending'}),
+               (:Promise {id:'PR-2', customer_phone:'+923003333333', customer_name:'Danish Ali',
+                          staff:'Usman Tariq', promise:'Bumper scratch repair completed by Friday',
+                          deadline_at: $d2, created_at: $c2, status:'pending'})
+        """, params={"d1": _now - 5 * _D, "c1": _now - 10 * _D,
+                     "d2": _now + 2 * _D, "c2": _now - 1 * _D})
 
     # --- verify ---
     res = graph.query("MATCH (n) RETURN labels(n)[0] AS label, count(n) AS c ORDER BY label")

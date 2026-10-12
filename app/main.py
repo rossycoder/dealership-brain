@@ -32,6 +32,22 @@ class ChatIn(BaseModel):
     message: str
 
 
+class CallbackIn(BaseModel):
+    customer_phone: str
+    customer_name: str = ""
+    staff: str = "Usman Tariq"
+    topic: str = ""
+    promised_in_hours: float = 2.0  # demo-friendly: hours from now (can be negative for overdue demo)
+
+
+class PromiseIn(BaseModel):
+    customer_phone: str
+    customer_name: str = ""
+    staff: str = "Bilal Ahmed"
+    promise: str = ""
+    deadline_in_days: float = 3.0
+
+
 @app.on_event("startup")
 def _startup():
     # Defensive: never crash the function at startup (Vercel runs this even
@@ -108,6 +124,91 @@ def graph_stats():
 def reseed():
     seedmod.seed()
     return {"ok": True, "note": "reseeded with FICTIONAL demo data"}
+
+
+# ---------------------------------------------------------------------------
+# Callback SLA Tracker — "nobody returns my calls" (real complaint #1)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/callbacks")
+def create_callback(body: CallbackIn):
+    import time
+    graph = _need_graph()
+    promised_at = int(time.time() * 1000 + body.promised_in_hours * 3600 * 1000)
+    cb_id = G.add_callback(graph, body.customer_phone.strip(),
+                           body.customer_name.strip() or body.customer_phone.strip(),
+                           body.staff.strip(), body.topic.strip(), promised_at)
+    return {"ok": True, "id": cb_id}
+
+
+@app.get("/api/callbacks")
+def get_callbacks():
+    graph = _need_graph()
+    return {"callbacks": G.list_callbacks(graph)}
+
+
+@app.post("/api/callbacks/{cb_id}/done")
+def done_callback(cb_id: str):
+    graph = _need_graph()
+    res = G.complete_callback(graph, cb_id)
+    if res is None:
+        return JSONResponse({"ok": False, "error": "callback not found"}, status_code=404)
+    return {"ok": True, **res}
+
+
+@app.get("/api/callbacks/stats")
+def get_callback_stats():
+    graph = _need_graph()
+    return G.callback_stats(graph)
+
+
+# ---------------------------------------------------------------------------
+# Promise Tracker — "promised a spare key, 24 days, nothing"
+# ---------------------------------------------------------------------------
+
+@app.post("/api/promises")
+def create_promise(body: PromiseIn):
+    import time
+    graph = _need_graph()
+    deadline_at = int(time.time() * 1000 + body.deadline_in_days * 24 * 3600 * 1000)
+    pr_id = G.add_promise(graph, body.customer_phone.strip(),
+                          body.customer_name.strip() or body.customer_phone.strip(),
+                          body.staff.strip(), body.promise.strip(), deadline_at)
+    return {"ok": True, "id": pr_id}
+
+
+@app.get("/api/promises")
+def get_promises():
+    graph = _need_graph()
+    return {"promises": G.list_promises(graph)}
+
+
+@app.post("/api/promises/{pr_id}/done")
+def done_promise(pr_id: str):
+    graph = _need_graph()
+    res = G.complete_promise(graph, pr_id)
+    if res is None:
+        return JSONResponse({"ok": False, "error": "promise not found"}, status_code=404)
+    return {"ok": True, **res}
+
+
+# ---------------------------------------------------------------------------
+# Service Progress Updates — "car 4 days in workshop, zero updates"
+# ---------------------------------------------------------------------------
+
+@app.get("/api/tickets")
+def get_tickets():
+    graph = _need_graph()
+    return {"tickets": G.list_tickets(graph), "stages": G.TICKET_STAGES}
+
+
+@app.post("/api/tickets/{ticket_id}/advance")
+def advance_ticket(ticket_id: str):
+    graph = _need_graph()
+    res = G.advance_ticket(graph, ticket_id)
+    if res is None:
+        return JSONResponse({"ok": False, "error": "ticket not found"}, status_code=404)
+    return {"ok": True, **res}
 
 
 if __name__ == "__main__":

@@ -202,20 +202,29 @@ def customer_history(graph, phone, limit=5):
     return {"conversations": convs, "tickets": tickets}
 
 
-def vehicles_in_budget(graph, budget, limit=5):
+def vehicles_in_budget(graph, budget, limit=5, body_type=None, colour=None):
     if _is_memory(graph):
-        return graph.vehicles_in_budget(budget, limit)
+        return graph.vehicles_in_budget(budget, limit, body_type=body_type, colour=colour)
+    clauses = ["v.price <= $budget", "v.status = 'available'"]
+    params = {"budget": budget, "limit": limit}
+    if body_type:
+        clauses.append("toLower(v.body_type) = toLower($body_type)")
+        params["body_type"] = body_type
+    if colour:
+        clauses.append("toLower(v.colour) = toLower($colour)")
+        params["colour"] = colour
     res = graph.query(
-        """
+        f"""
         MATCH (v:Vehicle)
-        WHERE v.price <= $budget AND v.status = 'available'
-        RETURN v.stock_no, v.make, v.model, v.year, v.price
+        WHERE {" AND ".join(clauses)}
+        RETURN v.stock_no, v.make, v.model, v.year, v.price, v.colour, v.body_type
         ORDER BY v.price DESC LIMIT $limit
         """,
-        params={"budget": budget, "limit": limit},
+        params=params,
     )
     return [
-        {"stock_no": r[0], "make": r[1], "model": r[2], "year": r[3], "price": r[4]}
+        {"stock_no": r[0], "make": r[1], "model": r[2], "year": r[3], "price": r[4],
+         "colour": r[5], "body_type": r[6]}
         for r in res.result_set
     ]
 
@@ -277,7 +286,7 @@ def create_ticket(graph, phone, issue, priority="normal"):
         """
         MATCH (c:Customer {phone: $phone})
         CREATE (t:Ticket {id: 'T' + toString(timestamp()),
-                          issue: $issue, status: 'open',
+                          issue: $issue, status: 'open', stage: 'received',
                           priority: $priority, created: timestamp()})
         CREATE (c)-[:REPORTED]->(t)
         RETURN t.id
@@ -285,3 +294,174 @@ def create_ticket(graph, phone, issue, priority="normal"):
         params={"phone": phone, "issue": issue, "priority": priority},
     )
     return res.result_set[0][0] if res.result_set else None
+
+
+# ---------------------------------------------------------------------------
+# Callbacks / Promises / Ticket stages (new features)
+# ---------------------------------------------------------------------------
+
+TICKET_STAGES = ["received", "diagnosing", "parts_ordered",
+                 "in_progress", "quality_check", "ready"]
+
+STAGE_MESSAGES = {
+    "received": "Hi {name}, we've received your car for: {issue}. Ticket {id}. We'll keep you posted at every step. — Velocity Motors",
+    "diagnosing": "Hi {name}, our technicians are now diagnosing your car (Ticket {id}). We'll update you once we know more. — Velocity Motors",
+    "parts_ordered": "Hi {name}, we've ordered the parts needed for your car (Ticket {id}). We'll notify you when they arrive. — Velocity Motors",
+    "in_progress": "Hi {name}, repair work on your car has started (Ticket {id}). Our team is on it. — Velocity Motors",
+    "quality_check": "Hi {name}, your car (Ticket {id}) is in final quality check. Almost ready! — Velocity Motors",
+    "ready": "Hi {name}, great news! Your car is ready for pickup (Ticket {id}). Please visit us at your convenience. — Velocity Motors",
+}
+
+
+def add_callback(graph, customer_phone, customer_name, staff, topic, promised_at):
+    if _is_memory(graph):
+        return graph.add_callback(customer_phone, customer_name, staff, topic, promised_at)
+    import time as _t
+    cb_id = f"CB-{int(_t.time() * 1000)}"
+    graph.query(
+        """CREATE (:Callback {id: $id, customer_phone: $phone, customer_name: $name,
+                              staff: $staff, topic: $topic, promised_at: $promised_at,
+                              created_at: timestamp(), status: 'pending'})""",
+        params={"id": cb_id, "phone": customer_phone, "name": customer_name,
+                "staff": staff, "topic": topic, "promised_at": promised_at},
+    )
+    return cb_id
+
+
+def list_callbacks(graph):
+    import time as _t
+    now = int(_t.time() * 1000)
+    if _is_memory(graph):
+        return graph.list_callbacks()
+    res = graph.query(
+        """MATCH (c:Callback) RETURN c.id, c.customer_phone, c.customer_name,
+           c.staff, c.topic, c.promised_at, c.created_at, c.status,
+           c.done_at, c.done_on_time ORDER BY c.promised_at""")
+    out = []
+    for r in res.result_set:
+        p = {"id": r[0], "customer_phone": r[1], "customer_name": r[2], "staff": r[3],
+             "topic": r[4], "promised_at": r[5], "created_at": r[6], "status": r[7],
+             "done_at": r[8], "done_on_time": r[9]}
+        if p["status"] == "pending" and (p["promised_at"] or 0) < now:
+            p["overdue"] = True
+            p["overdue_ms"] = now - p["promised_at"]
+        else:
+            p["overdue"] = False
+            p["due_in_ms"] = max(0, (p["promised_at"] or 0) - now)
+        out.append(p)
+    return out
+
+
+def complete_callback(graph, cb_id):
+    if _is_memory(graph):
+        return graph.complete_callback(cb_id)
+    res = graph.query(
+        """MATCH (c:Callback {id: $id})
+           SET c.status = 'done', c.done_at = timestamp(),
+               c.done_on_time = (timestamp() <= c.promised_at)
+           RETURN c.id, c.done_on_time""",
+        params={"id": cb_id})
+    if not res.result_set:
+        return None
+    return {"id": res.result_set[0][0], "done_on_time": res.result_set[0][1]}
+
+
+def callback_stats(graph):
+    import time as _t
+    now = int(_t.time() * 1000)
+    cbs = list_callbacks(graph)
+    total = len(cbs)
+    done = [c for c in cbs if c["status"] == "done"]
+    on_time = [c for c in done if c.get("done_on_time")]
+    overdue_now = [c for c in cbs if c.get("overdue")]
+    return {"total": total, "done": len(done), "on_time": len(on_time),
+            "compliance_pct": round(100 * len(on_time) / len(done), 1) if done else 100.0,
+            "overdue_now": len(overdue_now)}
+
+
+def add_promise(graph, customer_phone, customer_name, staff, promise, deadline_at):
+    if _is_memory(graph):
+        return graph.add_promise(customer_phone, customer_name, staff, promise, deadline_at)
+    import time as _t
+    pr_id = f"PR-{int(_t.time() * 1000)}"
+    graph.query(
+        """CREATE (:Promise {id: $id, customer_phone: $phone, customer_name: $name,
+                             staff: $staff, promise: $promise, deadline_at: $deadline_at,
+                             created_at: timestamp(), status: 'pending'})""",
+        params={"id": pr_id, "phone": customer_phone, "name": customer_name,
+                "staff": staff, "promise": promise, "deadline_at": deadline_at},
+    )
+    return pr_id
+
+
+def list_promises(graph):
+    import time as _t
+    now = int(_t.time() * 1000)
+    if _is_memory(graph):
+        return graph.list_promises()
+    res = graph.query(
+        """MATCH (p:Promise) RETURN p.id, p.customer_phone, p.customer_name,
+           p.staff, p.promise, p.deadline_at, p.created_at, p.status
+           ORDER BY p.deadline_at""")
+    out = []
+    for r in res.result_set:
+        p = {"id": r[0], "customer_phone": r[1], "customer_name": r[2], "staff": r[3],
+             "promise": r[4], "deadline_at": r[5], "created_at": r[6], "status": r[7]}
+        if p["status"] == "pending" and (p["deadline_at"] or 0) < now:
+            p["overdue"] = True
+            p["overdue_ms"] = now - p["deadline_at"]
+        else:
+            p["overdue"] = False
+            p["due_in_ms"] = max(0, (p["deadline_at"] or 0) - now)
+        out.append(p)
+    return out
+
+
+def complete_promise(graph, pr_id):
+    if _is_memory(graph):
+        return graph.complete_promise(pr_id)
+    res = graph.query(
+        """MATCH (p:Promise {id: $id})
+           SET p.status = 'done', p.done_at = timestamp()
+           RETURN p.id""",
+        params={"id": pr_id})
+    return {"id": res.result_set[0][0]} if res.result_set else None
+
+
+def list_tickets(graph):
+    if _is_memory(graph):
+        return graph.list_tickets()
+    res = graph.query(
+        """MATCH (c:Customer)-[:REPORTED]->(t:Ticket)
+           RETURN t.id, t.issue, t.status, t.priority, t.stage,
+                  c.name, c.phone ORDER BY t.created DESC""")
+    return [{"id": r[0], "issue": r[1], "status": r[2], "priority": r[3],
+             "stage": r[4] or "received", "customer_name": r[5],
+             "customer_phone": r[6]} for r in res.result_set]
+
+
+def advance_ticket(graph, ticket_id):
+    """Move a ticket to the next service stage; returns stage + customer message."""
+    if _is_memory(graph):
+        return graph.advance_ticket(ticket_id)
+    # Cypher path: read current, compute next in Python, write back
+    res = graph.query(
+        """MATCH (c:Customer)-[:REPORTED]->(t:Ticket {id: $id})
+           RETURN t.stage, t.issue, c.name""",
+        params={"id": ticket_id})
+    if not res.result_set:
+        return None
+    cur, issue, name = res.result_set[0]
+    cur = cur or "received"
+    try:
+        idx = TICKET_STAGES.index(cur)
+    except ValueError:
+        idx = 0
+    nxt = TICKET_STAGES[min(idx + 1, len(TICKET_STAGES) - 1)]
+    new_status = "resolved" if nxt == "ready" else "open"
+    graph.query(
+        "MATCH (t:Ticket {id: $id}) SET t.stage = $stage, t.status = $status",
+        params={"id": ticket_id, "stage": nxt, "status": new_status})
+    msg = STAGE_MESSAGES[nxt].format(name=name or "there", issue=issue or "", id=ticket_id)
+    return {"id": ticket_id, "stage": nxt, "stages": TICKET_STAGES,
+            "customer_message": msg}
