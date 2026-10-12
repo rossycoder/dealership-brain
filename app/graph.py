@@ -128,12 +128,11 @@ def get_graph(auto_seed=True):
 def wipe_graph(graph):
     """Delete everything (fresh demo reset)."""
     if _is_memory(graph):
-        # Re-seed a fresh memory graph
-        from app.memory_graph import MemoryGraph
+        # Just clear; seed() will re-seed fully via its own CREATE queries.
+        # (Do NOT call graph._seed() here — that would duplicate everything.)
         graph._nodes.clear()
         graph._rels.clear()
         graph._next_id = 1
-        graph._seed()
         return
     graph.query("MATCH (n) DETACH DELETE n")
 
