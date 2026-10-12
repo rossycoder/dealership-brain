@@ -200,6 +200,24 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
 .spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;
   display:inline-block;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
+/* ---------- role switcher + language toggle (new features) ---------- */
+.roleswitch{display:flex;gap:6px;align-items:center;margin-left:auto}
+.rolebtn{background:var(--panel2);border:1px solid var(--line);color:var(--dim);font-size:12px;
+  font-weight:700;padding:8px 13px;border-radius:11px;cursor:pointer;transition:.2s;font-family:inherit}
+.rolebtn.on{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 4px 16px rgba(139,92,246,.35)}
+.langbtn{background:var(--panel2);border:1px solid var(--line);color:var(--dim);font-size:12px;
+  font-weight:700;padding:13px 13px;border-radius:14px;cursor:pointer;transition:.2s;font-family:inherit;flex:none}
+.langbtn.on{border-color:var(--cy);color:var(--txt);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
+.emibox{background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.3);border-radius:14px;
+  padding:14px 16px;margin-top:10px}
+.emibox .big{font-size:26px;font-weight:700;font-family:'Space Grotesk';color:var(--cy)}
+.memsec{margin:12px 0 4px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--faint)}
+select,input[type="date"]{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+  border-radius:10px;padding:10px;font-size:13px;font-family:inherit;width:100%}
+select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
+.alertbox{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.3);border-radius:12px;
+  padding:10px 12px;font-size:12px;margin-top:8px;white-space:pre-wrap;word-break:break-word}
+.alertbox.ok{background:rgba(52,211,153,.06);border-color:rgba(52,211,153,.3)}
 </style>
 </head>
 <body>
@@ -211,6 +229,10 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
     <div>
       <h1>Dealership Brain <span class="pill"><span class="dot"></span> FalkorDB Company Brain</span></h1>
       <p>Multi-agent support brain for a car dealership — memory, knowledge &amp; actions, all living in the graph.</p>
+    </div>
+    <div class="roleswitch">
+      <button id="roleCustomer" class="rolebtn" onclick="setRole('customer')">👤 Customer</button>
+      <button id="roleManager" class="rolebtn on" onclick="setRole('manager')">🧑‍💼 Manager</button>
     </div>
     <div class="status" id="sysStatus"><span class="dot"></span><span>connecting…</span></div>
   </div>
@@ -232,6 +254,8 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
         <div class="sendrow">
           <input id="msg" placeholder="Type a message as the customer…" autocomplete="off">
           <button class="btn mic" id="micBtn" type="button" title="Voice input" onclick="micToggle()">🎤</button>
+          <button class="langbtn on" id="langEn" type="button" title="English" onclick="setLang('en')">EN</button>
+          <button class="langbtn" id="langUr" type="button" title="Roman Urdu" onclick="setLang('ur')">اردو</button>
           <button class="btn" id="sendBtn" onclick="send()">Send</button>
         </div>
       </div>
@@ -240,6 +264,13 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
     <!-- SIDEBAR -->
     <div class="side">
       <div class="card tools">
+        <div class="card-h" style="border:none;padding:0 0 4px"><h3><span class="sg">Customer</span> tools</h3></div>
+        <button class="btn ghost" onclick="showTradeIn()">🚗 Trade-in valuation</button>
+        <button class="btn ghost" onclick="showTestDrive()">📅 Book test drive</button>
+        <button class="btn ghost" onclick="showFinance()">💰 Finance calculator</button>
+        <button class="btn ghost" onclick="showMemory()">🧠 Brain remembers</button>
+      </div>
+      <div class="card tools" id="managerTools">
         <div class="card-h" style="border:none;padding:0 0 4px"><h3><span class="sg">Manager</span> tools</h3></div>
         <button class="btn ghost" onclick="showChurn()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-6 4 3 5-8"/></svg>Churn-risk report</button>
         <button class="btn ghost" onclick="showStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.5 8.5l7 7M18 6a3 3 0 100-6"/></svg>Graph stats <span style="color:var(--faint);font-size:11px">(live Cypher)</span></button>
@@ -253,15 +284,19 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
       </div>
       <div class="card">
         <div class="tabs">
-          <div class="tab on" onclick="tab('trace',this)">Trace</div>
-          <div class="tab" onclick="tab('callbacks',this)">Callbacks</div>
-          <div class="tab" onclick="tab('promises',this)">Promises</div>
-          <div class="tab" onclick="tab('service',this)">Service</div>
-          <div class="tab" onclick="tab('churn',this)">Churn</div>
-          <div class="tab" onclick="tab('graph',this)">Graph</div>
-          <div class="tab" onclick="tab('map',this)">Map</div>
-          <div class="tab" onclick="tab('match',this)">Match</div>
-          <div class="tab" onclick="tab('team',this)">Team</div>
+          <div class="tab on" onclick="tab('trace',this)" data-role="manager">Trace</div>
+          <div class="tab" onclick="tab('callbacks',this)" data-role="manager">Callbacks</div>
+          <div class="tab" onclick="tab('promises',this)" data-role="manager">Promises</div>
+          <div class="tab" onclick="tab('service',this)" data-role="manager">Service</div>
+          <div class="tab" onclick="tab('churn',this)" data-role="manager">Churn</div>
+          <div class="tab" onclick="tab('graph',this)" data-role="manager">Graph</div>
+          <div class="tab" onclick="tab('map',this)" data-role="manager">Map</div>
+          <div class="tab" onclick="tab('match',this)" data-role="manager">Match</div>
+          <div class="tab" onclick="tab('team',this)" data-role="manager">Team</div>
+          <div class="tab" onclick="tab('trade',this)" data-role="customer">Trade</div>
+          <div class="tab" onclick="tab('drive',this)" data-role="customer">Drive</div>
+          <div class="tab" onclick="tab('finance',this)" data-role="customer">Finance</div>
+          <div class="tab" onclick="tab('memory',this)" data-role="customer">Memory</div>
         </div>
         <div class="pane on scroll" id="pane-trace"><pre class="trace" id="trace">Agent trace appears here after your first message…</pre></div>
         <div class="pane scroll" id="pane-callbacks"><div id="cbBody" style="color:var(--dim);font-size:13px">Loading callbacks…</div></div>
@@ -272,6 +307,10 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
         <div class="pane scroll" id="pane-map"><div id="mapBody" style="color:var(--dim);font-size:13px">Pick a customer to see their live graph neighborhood.</div></div>
         <div class="pane scroll" id="pane-match"><div id="matchBody" style="color:var(--dim);font-size:13px">Pick a new arrival to find matching customers.</div></div>
         <div class="pane scroll" id="pane-team"><div id="teamBody" style="color:var(--dim);font-size:13px">Loading staff leaderboard…</div></div>
+        <div class="pane scroll" id="pane-trade"><div id="tradeBody" style="color:var(--dim);font-size:13px">Value your old car for trade-in.</div></div>
+        <div class="pane scroll" id="pane-drive"><div id="driveBody" style="color:var(--dim);font-size:13px">Book a free 30-minute test drive.</div></div>
+        <div class="pane scroll" id="pane-finance"><div id="financeBody" style="color:var(--dim);font-size:13px">Check your monthly EMI before you buy.</div></div>
+        <div class="pane scroll" id="pane-memory"><div id="memBody" style="color:var(--dim);font-size:13px">See everything the brain remembers about a customer.</div></div>
       </div>
     </div>
   </div>
@@ -288,6 +327,36 @@ function tab(name,el){document.querySelectorAll('.tab').forEach(x=>x.classList.r
   document.querySelectorAll('.pane').forEach(x=>x.classList.remove('on'));$('pane-'+name).classList.add('on');}
 function goTab(name){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.textContent.toLowerCase()===name));
   document.querySelectorAll('.pane').forEach(x=>x.classList.toggle('on',x.id==='pane-'+name));}
+
+/* ---------- language toggle (EN / Roman Urdu) ---------- */
+let chatLang='en';
+function setLang(l){
+  chatLang=l;
+  $('langEn').classList.toggle('on',l==='en');
+  $('langUr').classList.toggle('on',l==='ur');
+  toast(l==='ur'?'Roman Urdu replies ON — Assalam-o-Alaikum!':'English replies ON');
+}
+
+/* ---------- role switcher (Customer / Manager) ---------- */
+let role='manager';
+const CUSTOMER_TABS=['trade','drive','finance','memory'];
+function setRole(r){
+  role=r;
+  $('roleCustomer').classList.toggle('on',r==='customer');
+  $('roleManager').classList.toggle('on',r==='manager');
+  $('managerTools').style.display=r==='manager'?'':'none';
+  document.querySelectorAll('.tab').forEach(t=>{
+    const tr=t.dataset.role||'manager';
+    t.style.display=(r==='manager'||tr==='customer')?'':'none';
+  });
+  // if the active tab is now hidden, jump to the first visible one
+  const active=document.querySelector('.tab.on');
+  if(active&&active.style.display==='none'){
+    const first=[...document.querySelectorAll('.tab')].find(t=>t.style.display!=='none');
+    if(first)tab(first.textContent.toLowerCase(),first);
+  }
+  toast(r==='customer'?'👤 Customer view — chat, trade-in, test drives, finance':'🧑‍💼 Manager view — full command center');
+}
 
 function addMsg(cls,who,html,tags){
   const d=document.createElement('div');d.className='msg '+cls;
@@ -356,13 +425,14 @@ async function send(){
   typing();
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phone,name,message})});
+      body:JSON.stringify({phone,name,message,lang:chatLang})});
     if(!r.ok)throw new Error('server '+r.status);
     const j=await r.json();untype();
     addMsg('bot',esc(j.agent||'agent')+' agent',
       md2html(j.reply||'(no reply)'),
       [{t:'intent: '+(j.intent||'?'),c:'v'},{t:'llm: '+(j.llm_provider||'?')},
-       {t:j.returning_customer?'returning customer':'new customer',c:j.returning_customer?'g':''}]);
+       {t:j.returning_customer?'returning customer':'new customer',c:j.returning_customer?'g':''},
+       {t:chatLang==='ur'?'Roman Urdu':'English'}]);
     traceEl.textContent='TRACE · '+new Date().toLocaleTimeString()+'\n'+JSON.stringify(
       {intent:j.intent,agent:j.agent,llm_provider:j.llm_provider,returning_customer:j.returning_customer,
        context_used:j.context_used,actions_taken:j.actions_taken},null,2);
@@ -537,7 +607,11 @@ async function showPromises(){
       return `<div class="prrow${p.overdue&&p.status!=='done'?' overdue':''}" style="${p.overdue&&p.status!=='done'?'border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.05)':''}">
         <div class="rowhead"><b>“${esc(p.promise)}”</b>${badge}</div>
         <div class="sub">👤 ${esc(p.customer_name)} · 🧑‍💼 promised by ${esc(p.staff)}<br>deadline ${new Date(p.deadline_at).toLocaleString()}</div>
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
         ${p.status!=='done'?`<button class="mini" onclick="completePromise('${esc(p.id)}')">✓ Mark kept</button>`:''}
+        ${p.overdue&&p.status!=='done'?`<button class="mini" onclick="sendPromiseAlert('${esc(p.id)}')">📢 n8n alert</button>`:''}
+        </div>
+        <div id="alert-${esc(p.id)}"></div>
       </div>`;
     }).join(''):'<div style="color:var(--dim)">No promises logged yet.</div>')+
     `<div class="formgrid" style="margin-top:12px">
@@ -560,6 +634,22 @@ async function completePromise(id){
   await fetch('/api/promises/'+encodeURIComponent(id)+'/done',{method:'POST'});
   showPromises();refreshBadges();
 }
+async function sendPromiseAlert(id){
+  const slot=$('alert-'+CSS.escape(id));
+  if(slot)slot.innerHTML='<span class="spin" style="border-top-color:var(--warn)"></span> sending alert…';
+  try{
+    const j=await (await fetch('/api/promises/'+encodeURIComponent(id)+'/alert',{method:'POST'})).json();
+    if(!j.ok)throw new Error(j.error||'alert failed');
+    const p=j.payload||{};
+    const head=j.sent
+      ?`✅ <b>Alert sent to n8n</b> (HTTP ${j.http_status}) — manager gets WhatsApp/Slack.`
+      :`⚠️ <b>Preview only</b> — ${esc(j.reason||'webhook not configured')}. Set <code>N8N_WEBHOOK_URL</code> to send for real.`;
+    if(slot)slot.innerHTML=`<div class="alertbox${j.sent?' ok':''}">${head}\n\n📦 Payload:\n${esc(JSON.stringify(p,null,1)).slice(0,900)}</div>`;
+    toast(j.sent?'n8n alert sent.':'Alert preview shown — webhook not configured.');
+  }catch(e){
+    if(slot)slot.innerHTML=`<div class="alertbox">❌ ${esc(e.message)}</div>`;
+  }
+}
 
 // ================= SERVICE PROGRESS UPDATES =================
 const STAGE_LABEL={received:'Received',diagnosing:'Diagnosing',parts_ordered:'Parts ordered',
@@ -568,9 +658,27 @@ async function showService(){
   goTab('service');const b=$('svcBody');
   b.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> loading tickets…';
   try{
-    const j=await (await fetch('/api/tickets')).json();
+    const [j,due]=await Promise.all([
+      (await fetch('/api/tickets')).json(),
+      (await fetch('/api/service/due')).json()]);
     const stages=j.stages||[],rows=j.tickets||[];
-    b.innerHTML=rows.length?rows.map(t=>{
+    const rems=(due.reminders||[]).filter(v=>v.urgency!=='ok');
+    const remHtml=rems.length?
+      `<div class="memsec">🔔 Service reminders — ${rems.length} vehicle(s) need attention</div>`+
+      rems.map(v=>{
+        const badge=v.urgency==='overdue'
+          ?`<span class="badge overdue">overdue ${v.days_overdue}d</span>`
+          :`<span class="badge due">due in ${v.due_in_days}d</span>`;
+        const owner=v.owner_name?` · 👤 ${esc(v.owner_name)}`:'';
+        return `<div class="cbrow${v.urgency==='overdue'?' overdue':''}">
+          <div class="rowhead"><b>${esc(v.year)} ${esc(v.make)} ${esc(v.model)}</b> ${badge}</div>
+          <div class="sub">${esc(v.stock_no)}${owner}${v.last_service_date?' · last service '+new Date(v.last_service_date).toLocaleDateString():''}</div>
+        </div>`;
+      }).join('')
+      :'<div class="sub" style="color:var(--ok)">✅ No vehicles overdue for service.</div>';
+    b.innerHTML=remHtml+
+      `<div class="memsec" style="margin-top:14px">🔧 Service tickets</div>`+
+      (rows.length?rows.map(t=>{
       const idx=stages.indexOf(t.stage||'received');
       const bar=stages.map((s,i)=>`<div class="stage${i<=idx?' hit':''}">${STAGE_LABEL[s]||s}</div>`).join('');
       return `<div class="cbrow">
@@ -583,7 +691,7 @@ async function showService(){
           :'<div class="sub" style="color:var(--ok)">Completed — customer notified.</div>'}
         <div id="wa-${esc(t.id)}"></div>
       </div>`;
-    }).join(''):'<div style="color:var(--dim)">No tickets.</div>';
+    }).join(''):'<div style="color:var(--dim)">No tickets.</div>');
   }catch(e){b.textContent='Failed: '+e.message;}
 }
 async function advanceTicket(id){
@@ -713,6 +821,176 @@ async function runSmartMatch(){
 function copyDraft(btn){
   const msg=btn.closest('.matchrow').querySelector('.matchmsg').textContent;
   navigator.clipboard.writeText(msg).then(()=>toast('Draft copied — paste into WhatsApp.'));
+}
+
+// ================= TRADE-IN VALUATION =================
+async function showTradeIn(){
+  goTab('trade');const b=$('tradeBody');
+  b.innerHTML=`<div class="formgrid">
+    <label>🚗 Trade-in valuation — what is your old car worth?</label>
+    <div style="display:flex;gap:8px">
+      <input id="tiMake" placeholder="Make e.g. Toyota" value="Toyota" style="flex:1">
+      <input id="tiModel" placeholder="Model e.g. Corolla" value="Corolla" style="flex:1">
+    </div>
+    <div style="display:flex;gap:8px">
+      <input id="tiYear" type="number" value="2020" placeholder="Year" style="flex:1">
+      <input id="tiKm" type="number" value="75000" placeholder="Mileage (km)" style="flex:1">
+    </div>
+    <select id="tiCond">
+      <option value="excellent">Condition: Excellent</option>
+      <option value="good" selected>Condition: Good</option>
+      <option value="fair">Condition: Fair</option>
+      <option value="poor">Condition: Poor</option>
+    </select>
+    <button class="btn ghost" onclick="runTradeIn()">💰 Get valuation</button>
+  </div><div id="tiResult" style="margin-top:4px"></div>`;
+}
+async function runTradeIn(){
+  const box=$('tiResult');
+  box.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> valuing…';
+  try{
+    const body={make:$('tiMake').value.trim(),model:$('tiModel').value.trim(),
+      year:parseInt($('tiYear').value)||2020,mileage_km:parseInt($('tiKm').value)||0,
+      condition:$('tiCond').value};
+    const j=await (await fetch('/api/tradein/valuate',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+    box.innerHTML=`<div class="emibox">
+      <div style="font-size:12.5px;color:var(--dim);margin-bottom:6px">${esc(j.year)} ${esc(j.make)} ${esc(j.model)} · ${j.mileage_km.toLocaleString()} km · ${esc(j.condition)}</div>
+      <div class="big">PKR ${j.mid.toLocaleString()}</div>
+      <div style="font-size:12.5px;color:var(--dim);margin-top:4px">Range: PKR ${j.low.toLocaleString()} – ${j.high.toLocaleString()}</div>
+      <div class="memsec">How we calculated</div>
+      <div class="sub">${j.breakdown.map(esc).join('<br>')}</div>
+      <div class="sub" style="margin-top:6px;color:var(--faint)">${esc(j.note)}</div>
+    </div>`;
+  }catch(e){box.innerHTML=`<div style="color:var(--bad)">Valuation failed: ${esc(e.message)}</div>`;}
+}
+
+// ================= TEST-DRIVE BOOKING =================
+async function showTestDrive(){
+  goTab('drive');const b=$('driveBody');
+  b.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> loading…';
+  try{
+    const [vj,sj]=await Promise.all([
+      (await fetch('/api/vehicles')).json(),(await fetch('/api/testdrive/slots')).json()]);
+    const vs=(vj.vehicles||[]).filter(v=>v.status==='available');
+    const tomorrow=new Date(Date.now()+86400000).toISOString().slice(0,10);
+    b.innerHTML=`<div class="formgrid">
+      <label>📅 Book a free 30-minute test drive</label>
+      <select id="tdVehicle">${vs.map(v=>`<option value="${esc(v.stock_no)}">${esc(v.stock_no)} — ${esc(v.year)} ${esc(v.make)} ${esc(v.model)}</option>`).join('')}</select>
+      <div style="display:flex;gap:8px">
+        <input id="tdDate" type="date" value="${tomorrow}" style="flex:1">
+        <select id="tdSlot" style="flex:1">${(sj.slots||[]).map(s=>`<option>${esc(s)}</option>`).join('')}</select>
+      </div>
+      <button class="btn ghost" onclick="bookTestDrive()">📅 Book test drive</button>
+    </div><div id="tdMsg" style="margin-top:4px"></div>
+    <div class="memsec">Upcoming bookings</div><div id="tdList"></div>`;
+    loadBookings();
+  }catch(e){b.textContent='Failed: '+e.message;}
+}
+async function bookTestDrive(){
+  const phone=$('phone').value.trim()||'+923000000000';
+  const name=$('name').value.trim()||phone;
+  const body={customer_phone:phone,customer_name:name,stock_no:$('tdVehicle').value,
+    date:$('tdDate').value,time_slot:$('tdSlot').value};
+  const box=$('tdMsg');
+  try{
+    const r=await fetch('/api/testdrive/book',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.error||'booking failed');
+    box.innerHTML=`<div class="alertbox ok">✅ <b>Booked!</b> Confirmation <b>${esc(j.id)}</b> — ${esc(body.date)} at ${esc(body.time_slot)}. See you then!</div>`;
+    loadBookings();
+  }catch(e){box.innerHTML=`<div class="alertbox">❌ ${esc(e.message)}</div>`;}
+}
+async function loadBookings(){
+  const box=$('tdList');if(!box)return;
+  try{
+    const j=await (await fetch('/api/testdrive/list')).json();
+    const rows=j.bookings||[];
+    box.innerHTML=rows.length?rows.map(t=>`
+      <div class="cbrow"><div class="rowhead"><b>${esc(t.id)}</b>
+        <span class="badge due">${esc(t.date)} · ${esc(t.time_slot)}</span></div>
+        <div class="sub">🚗 ${esc(t.year||'')} ${esc(t.make||'')} ${esc(t.model||'')} (${esc(t.stock_no)})<br>👤 ${esc(t.customer_name)} · ${esc(t.customer_phone)}</div>
+      </div>`).join(''):'<div style="color:var(--dim)">No bookings yet.</div>';
+  }catch(e){box.textContent='Failed: '+e.message;}
+}
+
+// ================= FINANCE CALCULATOR (EMI) =================
+async function showFinance(){
+  goTab('finance');const b=$('financeBody');
+  b.innerHTML=`<div class="formgrid">
+    <label>💰 Financing pre-check — monthly EMI estimate</label>
+    <input id="fnPrice" type="number" value="3000000" placeholder="Vehicle price (PKR)">
+    <input id="fnDown" type="number" value="600000" placeholder="Down payment (PKR)">
+    <div style="display:flex;gap:8px">
+      <select id="fnMonths" style="flex:1">
+        ${[12,24,36,48,60].map(m=>`<option value="${m}"${m===36?' selected':''}>${m} months</option>`).join('')}
+      </select>
+      <input id="fnRate" type="number" step="0.5" value="22" placeholder="Rate % p.a." style="flex:1">
+    </div>
+    <button class="btn ghost" onclick="runFinance()">💰 Calculate EMI</button>
+  </div><div id="fnResult" style="margin-top:4px"></div>`;
+}
+async function runFinance(){
+  const box=$('fnResult');
+  box.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> calculating…';
+  try{
+    const body={price:parseFloat($('fnPrice').value)||0,down_payment:parseFloat($('fnDown').value)||0,
+      months:parseInt($('fnMonths').value)||36,annual_rate_pct:parseFloat($('fnRate').value)||22};
+    const j=await (await fetch('/api/finance/quote',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+    box.innerHTML=`<div class="emibox">
+      <div style="font-size:12.5px;color:var(--dim)">Monthly EMI · ${j.months} months @ ${j.annual_rate_pct}% p.a.</div>
+      <div class="big">PKR ${j.emi.toLocaleString()}<span style="font-size:14px;color:var(--dim)">/mo</span></div>
+      <div class="statgrid" style="margin-top:10px">
+        <div class="stat"><b>${j.financed.toLocaleString()}</b><span>financed</span></div>
+        <div class="stat"><b>${j.total_interest.toLocaleString()}</b><span>total interest</span></div>
+        <div class="stat"><b>${j.total_payable.toLocaleString()}</b><span>total payable</span></div>
+      </div>
+      <div class="sub" style="margin-top:8px">First month: PKR ${j.first_month.interest.toLocaleString()} interest + PKR ${j.first_month.principal.toLocaleString()} principal<br>
+      Down payment: PKR ${j.down_payment.toLocaleString()}</div>
+      <div class="sub" style="color:var(--faint)">${esc(j.note)}</div>
+    </div>`;
+  }catch(e){box.innerHTML=`<div style="color:var(--bad)">Quote failed: ${esc(e.message)}</div>`;}
+}
+
+// ================= "BRAIN REMEMBERS" PANEL =================
+async function showMemory(phone){
+  goTab('memory');const b=$('memBody');
+  const ph=(phone||($('memPhone')&&$('memPhone').value)||$('phone').value||'+923001111111').trim();
+  b.innerHTML=`<div class="formgrid">
+      <label>🧠 Brain remembers — everything we know about a customer</label>
+      <input id="memPhone" placeholder="Customer phone" value="${esc(ph)}">
+      <button class="btn ghost" onclick="showMemory()">🧠 Recall memory</button>
+    </div><div id="memCard" style="margin-top:4px;color:var(--dim);font-size:13px">Recalling…</div>`;
+  try{
+    const r=await fetch('/api/memory/'+encodeURIComponent(ph));
+    const j=await r.json();
+    const box=$('memCard');
+    if(!r.ok||j.error){box.innerHTML=`<div style="color:var(--bad)">${esc(j.error||'not found')}: ${esc(ph)}</div>`;return;}
+    const c=j.customer||{};
+    const vlist=(arr)=>arr.length?arr.map(v=>`${v.year} ${v.make} ${v.model} (PKR ${(v.price||0).toLocaleString()})`).join('<br>'):'—';
+    box.innerHTML=`
+      <div class="emibox">
+        <div class="big" style="font-size:20px">${esc(c.name||ph)}</div>
+        <div class="sub">📱 ${esc(c.phone||'')} · budget PKR ${(c.budget||0).toLocaleString()} · segment: ${esc(c.segment||'')}</div>
+      </div>
+      <div class="memsec">🚗 Vehicles</div>
+      <div class="kv"><span>Interested in</span><b style="text-align:right">${vlist(j.vehicles.interested_in||[])}</b></div>
+      <div class="kv"><span>Viewed</span><b style="text-align:right">${vlist(j.vehicles.viewed||[])}</b></div>
+      <div class="kv"><span>Owns</span><b style="text-align:right">${vlist(j.vehicles.owns||[])}</b></div>
+      <div class="memsec">🎫 Tickets & 💬 conversations</div>
+      ${(j.tickets||[]).map(t=>`<div class="sub">🎫 ${esc(t.id)}: ${esc(t.issue)} <i>(${esc(t.status)})</i></div>`).join('')||'<div class="sub">No tickets.</div>'}
+      ${(j.conversations||[]).map(x=>`<div class="sub">💬 ${esc(x.summary)} <i>(${esc(x.intent)})</i></div>`).join('')||'<div class="sub">No conversations yet.</div>'}
+      <div class="memsec">⏳ Pending commitments</div>
+      ${(j.pending_promises||[]).map(p=>`<div class="sub">🤝 “${esc(p.promise)}” — ${esc(p.staff)}</div>`).join('')||''}
+      ${(j.pending_callbacks||[]).map(x=>`<div class="sub">📞 ${esc(x.topic)} — ${esc(x.staff)}</div>`).join('')||''}
+      ${(!j.pending_promises?.length&&!j.pending_callbacks?.length)?'<div class="sub">None pending.</div>':''}
+      <div class="memsec">🔮 Inferred preferences</div>
+      <div class="sub">Body types: ${(j.inferred_preferences.preferred_body_types||[]).map(esc).join(', ')||'—'}<br>
+      Makes: ${(j.inferred_preferences.preferred_makes||[]).map(esc).join(', ')||'—'}</div>
+      <div class="sub" style="color:var(--faint);margin-top:6px">${esc(j.memory_note||'')}</div>`;
+  }catch(e){$('memCard').innerHTML=`<div style="color:var(--bad)">Failed: ${esc(e.message)}</div>`;}
 }
 
 // ================= STAFF LEADERBOARD =================
