@@ -71,6 +71,7 @@ python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 | Triage → specialist routing | ✅ REAL (intent classifier + 3 specialist agents) |
 | Cross-session memory | ✅ REAL (per-phone conversation history in graph) |
 | Churn-risk detection + escalation | ✅ REAL (Cypher aggregation → action) |
+| SLA escalation alerts (n8n) + Alert Log audit trail | ✅ REAL (webhook POST when `N8N_WEBHOOK_URL` set; every attempt logged as `(:Alert)` newest-first) |
 | Demo dataset | ⚠️ FICTIONAL (clearly labeled everywhere) |
 | LLM replies (default) | ⚠️ HEURISTIC (labeled `heuristic`; swap to `openai` via env) |
 
@@ -81,6 +82,7 @@ python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 (:Customer)-[:REPORTED]->(:Ticket)
 (:Customer)-[:HAD]->(:Conversation)
 (:Staff {role})  (:Policy {topic, content})
+(:Alert {event, ref_id, outcome}) — audit trail of every escalation attempt
 ```
 
 ## 4-day build plan (Oct 15–18)
