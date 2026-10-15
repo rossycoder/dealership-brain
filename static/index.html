@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dealership Brain — AI Company Brain</title>
-<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -276,6 +276,7 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
         <button class="btn ghost" onclick="showStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.5 8.5l7 7M18 6a3 3 0 100-6"/></svg>Graph stats <span style="color:var(--faint);font-size:11px">(live Cypher)</span></button>
         <button class="btn ghost" onclick="showCallbacks()">📞 Callback SLA <span id="cbAlert" style="margin-left:auto"></span></button>
         <button class="btn ghost" onclick="showPromises()">🤝 Promise tracker <span id="prAlert" style="margin-left:auto"></span></button>
+        <button class="btn ghost" onclick="showAlerts()">🔔 Alert log</button>
         <button class="btn ghost" onclick="showService()">🔧 Service updates</button>
         <button class="btn ghost" onclick="showNeighborhood()">🕸️ Customer graph</button>
         <button class="btn ghost" onclick="showSmartMatch()">🎯 Smart match</button>
@@ -287,6 +288,7 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
           <div class="tab on" onclick="tab('trace',this)" data-role="manager">Trace</div>
           <div class="tab" onclick="tab('callbacks',this)" data-role="manager">Callbacks</div>
           <div class="tab" onclick="tab('promises',this)" data-role="manager">Promises</div>
+          <div class="tab" onclick="tab('alerts',this)" data-role="manager">Alerts</div>
           <div class="tab" onclick="tab('service',this)" data-role="manager">Service</div>
           <div class="tab" onclick="tab('churn',this)" data-role="manager">Churn</div>
           <div class="tab" onclick="tab('graph',this)" data-role="manager">Graph</div>
@@ -301,6 +303,7 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
         <div class="pane on scroll" id="pane-trace"><pre class="trace" id="trace">Agent trace appears here after your first message…</pre></div>
         <div class="pane scroll" id="pane-callbacks"><div id="cbBody" style="color:var(--dim);font-size:13px">Loading callbacks…</div></div>
         <div class="pane scroll" id="pane-promises"><div id="prBody" style="color:var(--dim);font-size:13px">Loading promises…</div></div>
+        <div class="pane scroll" id="pane-alerts"><div id="alBody" style="color:var(--dim);font-size:13px">Run “🔔 Alert log” to see every escalation.</div></div>
         <div class="pane scroll" id="pane-service"><div id="svcBody" style="color:var(--dim);font-size:13px">Loading tickets…</div></div>
         <div class="pane scroll" id="pane-churn"><div id="churnBody" style="color:var(--dim);font-size:13px">Run the churn-risk report to see customers the graph flags.</div></div>
         <div class="pane scroll" id="pane-graph"><div id="graphBody" style="color:var(--dim);font-size:13px">Run “Graph stats” to query live node counts.</div></div>
@@ -548,7 +551,11 @@ async function showCallbacks(){
         return `<div class="cbrow${c.overdue&&c.status!=='done'?' overdue':''}">
           <div class="rowhead"><b>${esc(c.topic||'(no topic)')}</b>${badge}</div>
           <div class="sub">👤 ${esc(c.customer_name)} · ${esc(c.customer_phone)}<br>🧑‍💼 ${esc(c.staff)} · promised ${new Date(c.promised_at).toLocaleString()}</div>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
           ${c.status!=='done'?`<button class="mini" onclick="completeCallback('${esc(c.id)}')">✓ Mark done</button>`:''}
+          ${c.overdue&&c.status!=='done'?`<button class="mini" onclick="sendCallbackAlert('${esc(c.id)}')">📢 n8n alert</button>`:''}
+          </div>
+          <div id="alert-cb-${esc(c.id)}"></div>
         </div>`;
       }).join(''):'<div style="color:var(--dim)">No callbacks yet.</div>')+
       `<div class="formgrid" style="margin-top:12px">
@@ -578,9 +585,46 @@ async function simulateMissedCallback(){
     [{t:'escalation',c:'v'},{t:'auto-message',c:'g'}]);
   toast('Missed callback simulated — escalation fired.');
 }
-async function completeCallback(id){
-  await fetch('/api/callbacks/'+encodeURIComponent(id)+'/done',{method:'POST'});
-  showCallbacks();refreshBadges();
+async function sendCallbackAlert(id){
+  const slot=$('alert-cb-'+CSS.escape(id));
+  if(slot)slot.innerHTML='<span class="spin" style="border-top-color:var(--warn)"></span> sending alert…';
+  try{
+    const j=await (await fetch('/api/callbacks/'+encodeURIComponent(id)+'/alert',{method:'POST'})).json();
+    if(!j.ok)throw new Error(j.error||'alert failed');
+    const p=j.payload||{};
+    const head=j.sent
+      ?`✅ <b>Alert sent to n8n</b> (HTTP ${j.http_status}) — manager gets WhatsApp/Slack.`
+      :`⚠️ <b>Preview only</b> — ${esc(j.reason||'webhook not configured')}. Set <code>N8N_WEBHOOK_URL</code> to send for real.`;
+    if(slot)slot.innerHTML=`<div class="alertbox${j.sent?' ok':''}">${head}\n\n📦 Payload:\n${esc(JSON.stringify(p,null,1)).slice(0,900)}<br><br>📝 Recorded in the <b>Alert log</b>.</div>`;
+    toast(j.sent?'n8n alert sent.':'Alert preview shown — webhook not configured. Logged either way.');
+    refreshAlerts();
+  }catch(e){
+    if(slot)slot.innerHTML=`<div class="alertbox">❌ ${esc(e.message)}</div>`;
+  }
+}
+async function refreshAlerts(){
+  if(!$('pane-alerts').classList.contains('on'))return;
+  showAlerts();
+}
+
+// ================= ALERT LOG (escalation audit trail) =================
+async function showAlerts(){
+  goTab('alerts');const b=$('alBody');
+  b.innerHTML='<span class="spin" style="border-top-color:var(--warn)"></span> loading alert log…';
+  try{
+    const j=await (await fetch('/api/alerts?limit=50')).json();
+    const rows=j.alerts||[];
+    b.innerHTML=(rows.length?rows.map(a=>{
+      const badge=a.outcome==='webhook_sent'?`<span class="badge done">sent ✓ (HTTP ${a.http_status})</span>`
+        :a.outcome==='webhook_failed'?`<span class="badge overdue">failed ❌</span>`
+        :`<span class="badge due">preview only</span>`;
+      const ev=a.event==='callback_overdue'?'📞 Missed callback':'🤝 Broken promise';
+      return `<div class="cbrow" style="margin-bottom:8px">
+        <div class="rowhead"><b>${ev}</b>${badge}</div>
+        <div class="sub">${esc(a.reason||'')}<br>👤 ${esc(a.customer_name||'')} · ${esc(a.customer_phone||'')} · 🧑‍💼 ${esc(a.staff||'')}<br>⏰ ${a.created_at?new Date(a.created_at).toLocaleString():'—'} · ref ${esc(a.ref_id||'')} · id ${esc(a.id||'')}</div>
+      </div>`;
+    }).join(''):'<div style="color:var(--dim)">No escalations logged yet. Trigger one from an overdue callback or promise (📢 n8n alert) — attempts are recorded here even when no webhook is configured.</div>');
+  }catch(e){b.textContent='Failed: '+e.message;}
 }
 async function refreshBadges(){
   try{
@@ -644,8 +688,9 @@ async function sendPromiseAlert(id){
     const head=j.sent
       ?`✅ <b>Alert sent to n8n</b> (HTTP ${j.http_status}) — manager gets WhatsApp/Slack.`
       :`⚠️ <b>Preview only</b> — ${esc(j.reason||'webhook not configured')}. Set <code>N8N_WEBHOOK_URL</code> to send for real.`;
-    if(slot)slot.innerHTML=`<div class="alertbox${j.sent?' ok':''}">${head}\n\n📦 Payload:\n${esc(JSON.stringify(p,null,1)).slice(0,900)}</div>`;
-    toast(j.sent?'n8n alert sent.':'Alert preview shown — webhook not configured.');
+    if(slot)slot.innerHTML=`<div class="alertbox${j.sent?' ok':''}">${head}\n\n📦 Payload:\n${esc(JSON.stringify(p,null,1)).slice(0,900)}<br><br>📝 Recorded in the <b>Alert log</b>.</div>`;
+    toast(j.sent?'n8n alert sent.':'Alert preview shown — webhook not configured. Logged either way.');
+    refreshAlerts();
   }catch(e){
     if(slot)slot.innerHTML=`<div class="alertbox">❌ ${esc(e.message)}</div>`;
   }
