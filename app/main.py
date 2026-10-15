@@ -13,14 +13,13 @@ All data is FICTIONAL demo data (see app/seed.py). UI says so.
 import os
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from app import graph as G
-from app import agents, seed as seedmod
+from app import agents
 from app import llm
 
 app = FastAPI(title="Dealership Brain — Graph Hacks prep")
@@ -127,6 +126,7 @@ def graph_stats():
 
 @app.post("/api/seed")
 def reseed():
+    from app import seed as seedmod  # lazy: only needed for manual reseeds
     seedmod.seed()
     return {"ok": True, "note": "reseeded with FICTIONAL demo data"}
 
@@ -407,7 +407,7 @@ def customer_memory(phone: str):
 
 
 # ---------------------------------------------------------------------------
-# n8n webhook alert for broken promises
+# n8n webhook alerts for broken promises / missed callbacks
 # ---------------------------------------------------------------------------
 
 @app.post("/api/promises/{pr_id}/alert")
@@ -417,6 +417,25 @@ def promise_alert(pr_id: str):
     if not res.get("ok"):
         return JSONResponse(res, status_code=404 if "not found" in str(res.get("error", "")) else 502)
     return JSONResponse(res)
+
+
+@app.post("/api/callbacks/{cb_id}/alert")
+def callback_alert(cb_id: str):
+    graph = _need_graph()
+    res = G.send_callback_alert(graph, cb_id)
+    if not res.get("ok"):
+        return JSONResponse(res, status_code=404 if "not found" in str(res.get("error", "")) else 502)
+    return JSONResponse(res)
+
+
+# ---------------------------------------------------------------------------
+# Alert Log — audit trail of every escalation attempt (newest first)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/alerts")
+def get_alerts(limit: int = 50):
+    graph = _need_graph()
+    return {"alerts": G.list_alerts(graph, max(1, min(int(limit), 200)))}
 
 
 if __name__ == "__main__":

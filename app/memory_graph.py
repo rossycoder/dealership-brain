@@ -530,6 +530,30 @@ class MemoryGraph:
                                               "summary": summary, "intent": intent})
         self._add_rel(nid, cid, "HAD")
 
+    # -- alert log (audit trail for SLA escalations) --------------------------
+
+    def record_alert(self, event, ref_id, customer_name, customer_phone, staff,
+                     reason, outcome, http_status=0, message=""):
+        """Persist one escalation attempt. event: 'promise_overdue' |
+        'callback_overdue'. outcome: 'webhook_sent' | 'webhook_preview' |
+        'webhook_failed'."""
+        al_id = f"AL-{int(time.time() * 1000)}"
+        self._add_node("Alert", {"id": al_id, "event": event, "ref_id": ref_id,
+                                 "customer_name": customer_name,
+                                 "customer_phone": customer_phone,
+                                 "staff": staff, "reason": reason,
+                                 "outcome": outcome, "http_status": http_status,
+                                 "message": message,
+                                 "created_at": int(time.time() * 1000)})
+        return al_id
+
+    def list_alerts(self, limit=50):
+        out = []
+        for _, n in self._find("Alert"):
+            out.append(dict(n["props"]))
+        out.sort(key=lambda a: a.get("created_at") or 0, reverse=True)
+        return out[:limit]
+
     # -- test drives / service reminders / memory card (new features) ---------
 
     def book_testdrive(self, customer_phone, customer_name, stock_no, date, time_slot):

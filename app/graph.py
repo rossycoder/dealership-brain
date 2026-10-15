@@ -890,25 +890,88 @@ def customer_memory(graph, phone):
 
 
 # ---------------------------------------------------------------------------
-# n8n webhook alert for broken promises
+# Alert log — audit trail for SLA escalations (Alert nodes, both modes)
+# ---------------------------------------------------------------------------
+
+def record_alert(graph, event, ref_id, customer_name, customer_phone, staff,
+                 reason, outcome, http_status=0, message=""):
+    """Persist one escalation attempt so the manager can see who was alerted,
+    when, and what happened. outcome: webhook_sent | webhook_preview | webhook_failed."""
+    import time as _t
+    if _is_memory(graph):
+        return graph.record_alert(event, ref_id, customer_name, customer_phone,
+                                  staff, reason, outcome, http_status, message)
+    al_id = f"AL-{int(_t.time() * 1000)}"
+    graph.query(
+        """CREATE (:Alert {id: $id, event: $event, ref_id: $ref_id,
+                           customer_name: $customer_name, customer_phone: $customer_phone,
+                           staff: $staff, reason: $reason, outcome: $outcome,
+                           http_status: $http_status, message: $message,
+                           created_at: timestamp()})""",
+        params={"id": al_id, "event": event, "ref_id": ref_id,
+                "customer_name": customer_name, "customer_phone": customer_phone,
+                "staff": staff, "reason": reason, "outcome": outcome,
+                "http_status": http_status, "message": message},
+    )
+    return al_id
+
+
+def list_alerts(graph, limit=50):
+    """Newest-first escalation history for the manager's Alert Log."""
+    if _is_memory(graph):
+        return graph.list_alerts(limit)
+    res = graph.query(
+        """MATCH (a:Alert) RETURN a.id, a.event, a.ref_id, a.customer_name,
+           a.customer_phone, a.staff, a.reason, a.outcome, a.http_status,
+           a.message, a.created_at ORDER BY a.created_at DESC LIMIT $limit""",
+        params={"limit": int(limit)})
+    return [{"id": r[0], "event": r[1], "ref_id": r[2], "customer_name": r[3],
+             "customer_phone": r[4], "staff": r[5], "reason": r[6],
+             "outcome": r[7], "http_status": r[8], "message": r[9],
+             "created_at": r[10]} for r in res.result_set]
+
+
+def _fmt_overdue(overdue_ms):
+    d, h = divmod(overdue_ms // 60000, 24 * 60)
+    return f"{d}d {h // 60}h" if d else f"{h // 60}h {(h % 60)}m"
+
+
+def _post_webhook(payload):
+    """POST to N8N_WEBHOOK_URL when configured. Returns
+    (outcome, http_status, note): note only set for preview mode."""
+    import json as _json
+    import urllib.request as _urlreq
+    url = os.environ.get("N8N_WEBHOOK_URL", "").strip()
+    if not url:
+        return ("webhook_preview", 0,
+                "N8N_WEBHOOK_URL not configured — showing payload preview")
+    try:
+        req = _urlreq.Request(url, data=_json.dumps(payload).encode(),
+                              headers={"Content-Type": "application/json"})
+        with _urlreq.urlopen(req, timeout=8) as resp:
+            return ("webhook_sent", resp.status, "")
+    except Exception as e:
+        return ("webhook_failed", 0,
+                f"webhook POST failed: {type(e).__name__}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# n8n webhook alerts for broken promises / missed callbacks
 # ---------------------------------------------------------------------------
 
 def send_promise_alert(graph, pr_id):
-    """Build the n8n payload for an overdue promise; POST it if a webhook is configured."""
-    import json as _json
+    """Build the n8n payload for an overdue promise; POST it if a webhook is
+    configured; ALWAYS record the attempt in the Alert Log."""
     import time as _t
-    import urllib.request as _urlreq
     target = next((p for p in list_promises(graph) if p.get("id") == pr_id), None)
     if not target:
         return {"ok": False, "error": "promise not found"}
     now = int(_t.time() * 1000)
     overdue_ms = max(0, now - (target.get("deadline_at") or now))
-    d, h = divmod(overdue_ms // 60000, 24 * 60)
-    overdue_txt = f"{d}d {h // 60}h" if d else f"{h // 60}h {(h % 60)}m"
     wa_msg = (
         f"Hi {target.get('staff')}, this is Dealership Brain. Your promise to "
         f"{target.get('customer_name')} — “{target.get('promise')}” — is overdue by "
-        f"{overdue_txt}. Please call the customer ({target.get('customer_phone')}) "
+        f"{_fmt_overdue(overdue_ms)}. Please call the customer ({target.get('customer_phone')}) "
         f"today with an update. — Velocity Motors"
     )
     payload = {
@@ -923,48 +986,54 @@ def send_promise_alert(graph, pr_id):
         "suggested_whatsapp_message": wa_msg,
         "source": "dealership-brain",
     }
-    url = os.environ.get("N8N_WEBHOOK_URL", "").strip()
-    if not url:
-        return {"ok": True, "sent": False,
-                "reason": "N8N_WEBHOOK_URL not configured — showing payload preview",
-                "payload": payload}
-    try:
-        req = _urlreq.Request(url, data=_json.dumps(payload).encode(),
-                              headers={"Content-Type": "application/json"})
-        with _urlreq.urlopen(req, timeout=8) as resp:
-            return {"ok": True, "sent": True, "http_status": resp.status,
-                    "payload": payload}
-    except Exception as e:
-        return {"ok": False, "sent": False,
-                "error": f"webhook POST failed: {type(e).__name__}: {e}",
-                "payload": payload}
+    outcome, http_status, note = _post_webhook(payload)
+    record_alert(graph, "promise_overdue", pr_id,
+                 target.get("customer_name"), target.get("customer_phone"),
+                 target.get("staff"),
+                 f"Promise overdue by {_fmt_overdue(overdue_ms)}: “{target.get('promise')}”",
+                 outcome, http_status, wa_msg)
+    if outcome == "webhook_failed":
+        return {"ok": False, "sent": False, "error": note, "payload": payload}
+    return {"ok": True, "sent": outcome == "webhook_sent",
+            "http_status": http_status,
+            "reason": note or None, "payload": payload}
+
+
+def send_callback_alert(graph, cb_id):
+    """Build the n8n payload for a missed callback SLA; POST if configured;
+    ALWAYS record the attempt in the Alert Log."""
     import time as _t
+    target = next((c for c in list_callbacks(graph) if c.get("id") == cb_id), None)
+    if not target:
+        return {"ok": False, "error": "callback not found"}
     now = int(_t.time() * 1000)
-    res = graph.query("MATCH (s:Staff) RETURN s.name, s.role")
-    staff = {r[0]: {"name": r[0], "role": r[1], "cb_total": 0, "cb_done": 0,
-                    "cb_on_time": 0, "pr_total": 0, "pr_kept": 0, "pr_overdue": 0}
-             for r in res.result_set}
-    res = graph.query("MATCH (c:Callback) RETURN c.staff, c.status, c.done_on_time, c.promised_at")
-    for r in res.result_set:
-        s = staff.setdefault(r[0], {"name": r[0], "role": "", "cb_total": 0, "cb_done": 0,
-                                    "cb_on_time": 0, "pr_total": 0, "pr_kept": 0, "pr_overdue": 0})
-        s["cb_total"] += 1
-        if r[1] == "done":
-            s["cb_done"] += 1
-            if r[2]:
-                s["cb_on_time"] += 1
-    res = graph.query("MATCH (p:Promise) RETURN p.staff, p.status, p.deadline_at")
-    for r in res.result_set:
-        s = staff.setdefault(r[0], {"name": r[0], "role": "", "cb_total": 0, "cb_done": 0,
-                                    "cb_on_time": 0, "pr_total": 0, "pr_kept": 0, "pr_overdue": 0})
-        s["pr_total"] += 1
-        if r[1] == "done":
-            s["pr_kept"] += 1
-        elif (r[2] or 0) < now:
-            s["pr_overdue"] += 1
-    board = list(staff.values())
-    for s in board:
-        s["score"] = s["cb_on_time"] * 10 + s["pr_kept"] * 10 + s["cb_done"] * 2
-        s["cb_compliance"] = round(100 * s["cb_on_time"] / s["cb_done"], 1) if s["cb_done"] else 100.0
-    board.sort(key=lambda s: s["score"], reverse=True)
-    return {"leaderboard": board}
+    overdue_ms = max(0, now - (target.get("promised_at") or now))
+    wa_msg = (
+        f"Hi {target.get('staff')}, this is Dealership Brain. You promised to call "
+        f"{target.get('customer_name')} about “{target.get('topic')}” — it is "
+        f"overdue by {_fmt_overdue(overdue_ms)}. Please call {target.get('customer_phone')} "
+        f"now. — Velocity Motors"
+    )
+    payload = {
+        "event": "callback_overdue",
+        "callback_id": cb_id,
+        "customer": {"name": target.get("customer_name"),
+                     "phone": target.get("customer_phone")},
+        "staff": target.get("staff"),
+        "topic": target.get("topic"),
+        "promised_at": target.get("promised_at"),
+        "overdue_ms": overdue_ms,
+        "suggested_whatsapp_message": wa_msg,
+        "source": "dealership-brain",
+    }
+    outcome, http_status, note = _post_webhook(payload)
+    record_alert(graph, "callback_overdue", cb_id,
+                 target.get("customer_name"), target.get("customer_phone"),
+                 target.get("staff"),
+                 f"Callback SLA missed by {_fmt_overdue(overdue_ms)}: “{target.get('topic')}”",
+                 outcome, http_status, wa_msg)
+    if outcome == "webhook_failed":
+        return {"ok": False, "sent": False, "error": note, "payload": payload}
+    return {"ok": True, "sent": outcome == "webhook_sent",
+            "http_status": http_status,
+            "reason": note or None, "payload": payload}
