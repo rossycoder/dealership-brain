@@ -4,6 +4,8 @@ Endpoints:
   GET  /                      -> chat UI
   POST /api/chat               {phone, name, message} -> agent reply + trace
   GET  /api/churn              -> churn-risk report (manager view)
+  GET  /api/promise/tracking   -> promise-completion status (read-only)
+  POST /api/promise/watch      -> run Promise Watch agent (reminders + escalations)
   GET  /api/graph/stats        -> node counts per label (proves real graph)
   POST /api/seed                -> reseed fictional demo data
   GET  /api/status             -> db mode, llm provider (honest capabilities)
@@ -11,6 +13,7 @@ Endpoints:
 All data is FICTIONAL demo data (see app/seed.py). UI says so.
 """
 import os
+import time
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
@@ -198,6 +201,26 @@ def done_promise(pr_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Promise Watch — agent sweep: promise -> deadline -> reminder -> escalation -> log
+# ---------------------------------------------------------------------------
+
+@app.get("/api/promise/tracking")
+def promise_tracking():
+    """Read-only: classify all promises (overdue / due soon / ok / done). No side effects."""
+    graph = _need_graph()
+    return JSONResponse(agents.promise_watch(graph, dry_run=True))
+
+
+@app.post("/api/promise/watch")
+def run_promise_watch():
+    """Run the Promise Watch agent: log reminders for due-soon promises,
+    escalate overdue promises (webhook when configured), record every step
+    in the Alert Log. One reminder/escalation per promise — never duplicates."""
+    graph = _need_graph()
+    return JSONResponse(agents.promise_watch(graph, dry_run=False))
+
+
+# ---------------------------------------------------------------------------
 # Service Progress Updates — "car 4 days in workshop, zero updates"
 # ---------------------------------------------------------------------------
 
@@ -262,8 +285,18 @@ def add_vehicle(body: VehicleIn):
     return {"ok": True, "stock_no": stock_no}
 
 
-def _draft_followup(name, phone, vehicle, reasons, provider_label_out=None):
-    """Draft a personalized WhatsApp-style follow-up. LLM first, template fallback."""
+# Shared LLM time budget for smart-match drafting: all follow-up drafts
+# together must fit in this window; drafts that would exceed it fall back
+# to the instant template so the endpoint never outlasts serverless limits.
+_SMART_MATCH_LLM_BUDGET_S = 8.0
+
+
+def _draft_followup(name, phone, vehicle, reasons, provider_label_out=None, deadline=None):
+    """Draft a personalized WhatsApp-style follow-up. LLM first, template fallback.
+
+    deadline: monotonic timestamp — skip the LLM call entirely when the
+    shared budget is already spent.
+    """
     v_desc = f"{vehicle.get('year')} {vehicle.get('make')} {vehicle.get('model')}"
     price = vehicle.get("price") or 0
     template = (
@@ -273,7 +306,8 @@ def _draft_followup(name, phone, vehicle, reasons, provider_label_out=None):
     )
     try:
         from app import free_llm
-        if free_llm.available_provider() is not None:
+        if (deadline is None or time.monotonic() < deadline) and \
+                free_llm.available_provider() is not None:
             system = ("You are a car dealership sales assistant. Write a short, warm, "
                       "personalized WhatsApp follow-up message (max 3 sentences) for a "
                       "customer about a newly arrived vehicle. Use ONLY the given facts. "
@@ -297,8 +331,9 @@ def smart_match(body: SmartMatchIn):
         return JSONResponse({"ok": False, "error": res["error"]}, status_code=404)
     vehicle = res["vehicle"]
     out_matches = []
+    deadline = time.monotonic() + _SMART_MATCH_LLM_BUDGET_S
     for m in res["matches"]:
-        msg, provider = _draft_followup(m["name"], m["phone"], vehicle, m["reasons"])
+        msg, provider = _draft_followup(m["name"], m["phone"], vehicle, m["reasons"], deadline=deadline)
         out_matches.append({**m, "draft_message": msg, "draft_provider": provider})
     return {"ok": True, "vehicle": vehicle, "matches": out_matches}
 

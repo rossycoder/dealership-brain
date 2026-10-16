@@ -50,7 +50,8 @@ def _llm_chat(system: str, user: str) -> tuple[str | None, str]:
 _INTENT_PATTERNS = [
     ("service", [r"\b(service|repair|maintain|oil|brake|appointment|workshop|dent|scratch|warranty claim)"]),
     ("policy", [r"\b(policy|policies|warranty|return|exchange|refund)"]),
-    ("sales", [r"\b(price|buy|purchase|car|vehicle|suv|sedan|book|test drive|cost|emi|financ)"]),
+    ("finance", [r"\b(financ|emi|loan|installment|down\s?payment)"]),
+    ("sales", [r"\b(price|buy|purchase|car|vehicle|suv|sedan|book|test drive|cost)"]),
 ]
 
 _NAME_RE = re.compile(r"\b(?:i am|i'm|my name is|this is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)")
@@ -84,7 +85,12 @@ def heuristic_reply(intent: str, context: dict) -> str:
             parts.append(
                 f"We don't currently have a {no_match['desc']} within your budget of "
                 f"PKR {no_match['budget']:,}.")
-            parts.append("Want me to notify you when one arrives, or shall I show the closest alternatives?")
+            alts = context.get("alternatives") or []
+            if alts:
+                alt_lines = [f"- {v['year']} {v['make']} {v['model']} ({v.get('colour','')}, {v.get('body_type','')}) at PKR {v['price']:,} ({v['stock_no']})" for v in alts]
+                parts.append("Closest alternatives (a different body type, still within budget):\n" + "\n".join(alt_lines))
+            else:
+                parts.append("Want me to notify you when one arrives?")
         elif vehicles:
             lines = [f"- {v['year']} {v['make']} {v['model']} ({v.get('colour','')}, {v.get('body_type','')}) at PKR {v['price']:,} ({v['stock_no']})" for v in vehicles[:4]]
             parts.append("Based on your budget, these are available:\n" + "\n".join(lines))
@@ -108,15 +114,20 @@ def heuristic_reply(intent: str, context: dict) -> str:
 
 
 def classify_intent(text: str, context_hint: str = "") -> tuple[str, str]:
-    """Returns (intent, provider_label)."""
-    if _llm_active():
-        system = "Classify the customer message into exactly one word: sales, service, policy, or general."
+    """Returns (intent, provider_label).
+
+    Skip the triage LLM call when the heuristic is confident (a clear keyword
+    hit) — only ambiguous messages pay for an LLM classification round.
+    """
+    heuristic = heuristic_intent(text)
+    if _llm_active() and heuristic == "general":
+        system = "Classify the customer message into exactly one word: sales, service, policy, finance, or general."
         llm_text, label = _llm_chat(system, text)
         if llm_text:
             word = llm_text.strip().lower().split()[0] if llm_text.strip() else "general"
-            word = word if word in ("sales", "service", "policy", "general") else "general"
+            word = word if word in ("sales", "service", "policy", "finance", "general") else "general"
             return word, label
-    return heuristic_intent(text), "heuristic"
+    return heuristic, "heuristic"
 
 
 def draft_reply(intent: str, context: dict, lang: str = "en") -> tuple[str, str]:
@@ -132,12 +143,22 @@ def draft_reply(intent: str, context: dict, lang: str = "en") -> tuple[str, str]
             "Greet them as a first-time visitor."
         )
         no_match = context.get("no_match")
-        filter_rule = (
-            f" FILTER RULE: no vehicles match the requested filters ({no_match['desc']}) "
-            f"within budget PKR {no_match['budget']:,}. Say so honestly; "
-            "do NOT list unrelated vehicles."
-            if no_match else ""
-        )
+        filter_rule = ""
+        if no_match:
+            alts = context.get("alternatives") or []
+            filter_rule = (
+                f" FILTER RULE: no vehicles match the requested filters ({no_match['desc']}) "
+                f"within budget PKR {no_match['budget']:,}. Say so honestly FIRST. "
+            )
+            if alts:
+                alt_lines = ", ".join(
+                    f"{v['year']} {v['make']} {v['model']} ({v.get('body_type','')}) at PKR {v['price']:,}"
+                    for v in alts)
+                filter_rule += (
+                    "Then list these closest alternatives, explicitly labeled as "
+                    f"alternatives (they do not match the requested filters): {alt_lines}.")
+            else:
+                filter_rule += "Do NOT list unrelated vehicles."
         lang_rule = (
             " LANGUAGE RULE: reply ENTIRELY in Roman Urdu (Urdu written in Latin "
             "script, e.g. 'Assalam-o-Alaikum! Aap kaise hain?'). Never use English "
@@ -178,7 +199,12 @@ def heuristic_reply_ur(intent: str, context: dict) -> str:
             parts.append(
                 f"Maazrat — abhi hamare paas {no_match['desc']} aapke budget "
                 f"PKR {no_match['budget']:,} ke andar available nahi hai.")
-            parts.append("Kya aap chahein ke jese hi aisi gari aaye me aapko inform kar dun, ya kareebi options dikhaun?")
+            alts = context.get("alternatives") or []
+            if alts:
+                alt_lines = [f"- {v['year']} {v['make']} {v['model']} ({v.get('colour','')}, {v.get('body_type','')}) — PKR {v['price']:,} ({v['stock_no']})" for v in alts]
+                parts.append("Kareebi alternatives (body type alag hai, budget ke andar hain):\n" + "\n".join(alt_lines))
+            else:
+                parts.append("Kya aap chahein ke jese hi aisi gari aaye me aapko inform kar dun?")
         elif vehicles:
             lines = [f"- {v['year']} {v['make']} {v['model']} ({v.get('colour','')}, {v.get('body_type','')}) — PKR {v['price']:,} ({v['stock_no']})" for v in vehicles[:4]]
             parts.append("Aapke budget ke hisaab se ye gariyan available hain:\n" + "\n".join(lines))

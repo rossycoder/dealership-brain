@@ -1,6 +1,10 @@
 """free_llm.py — Real free-tier LLM chat for hackathon demos.
 
 Auto-detects providers, in priority order:
+  -1. AMD_LLM_BASE_URL -> AMD Developer Cloud (Instinct MI300X + ROCm,
+     vLLM OpenAI-compatible server). Active ONLY when the env var is set;
+     AMD_LLM_MODEL optional (auto-discovered from /models when unset);
+     AMD_LLM_API_KEY optional (vLLM may run without one).
   0. Pollinations.ai -> ZERO signup, ZERO API key. Works out of the box!
      https://text.pollinations.ai/openai (OpenAI-compatible). Free, no limits for demos.
   1. GROQ_API_KEY   -> Groq (OpenAI-compatible). Free tier, no credit card.
@@ -39,7 +43,7 @@ GEMINI_MODEL_DEFAULT = "gemini-2.5-flash"
 POLLINATIONS_BASE = "https://text.pollinations.ai/openai"
 POLLINATIONS_MODEL = "openai"  # their default free model alias
 
-_TIMEOUT = 30
+_TIMEOUT = 8
 
 
 def _post_json(url: str, payload: dict, headers: dict | None = None) -> dict:
@@ -67,6 +71,49 @@ def _post_json(url: str, payload: dict, headers: dict | None = None) -> dict:
         return {"ok": False, "status": e.code, "detail": detail}
     except Exception as e:  # DNS, timeout, TLS, offline...
         return {"ok": False, "status": 0, "detail": f"network error: {e}"}
+
+
+def _get_json(url: str, headers: dict | None = None) -> dict:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) hackathon-demo/1.0",
+            **(headers or {}),
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            return {"ok": True, "status": resp.status,
+                    "body": json.loads(resp.read().decode("utf-8", "replace"))}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "status": e.code, "detail": ""}
+    except Exception as e:
+        return {"ok": False, "status": 0, "detail": f"network error: {e}"}
+
+
+def _amd_chat(base: str, key: str, model: str, system: str, user: str,
+              max_tokens: int, temperature: float) -> dict:
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    return _post_json(
+        f"{base.rstrip('/')}/chat/completions",
+        {"model": model,
+         "messages": [{"role": "system", "content": system},
+                      {"role": "user", "content": user}],
+         "temperature": temperature, "max_tokens": max_tokens},
+        headers=headers,
+    )
+
+
+def _amd_discover_model(base: str, key: str) -> str | None:
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    r = _get_json(f"{base.rstrip('/')}/models", headers=headers)
+    if r["ok"]:
+        try:
+            return r["body"]["data"][0]["id"]
+        except Exception:
+            return None
+    return None
 
 
 def _groq_chat(key: str, model: str, system: str, user: str,
@@ -143,7 +190,9 @@ def _pollinations_chat(system: str, user: str,
 
 
 def available_provider() -> str | None:
-    """'pollinations' (always) | 'groq' | 'gemini' — based on env vars."""
+    """'amd' (if AMD_LLM_BASE_URL set) | 'pollinations' (always) | 'groq' | 'gemini'."""
+    if os.environ.get("AMD_LLM_BASE_URL", "").strip():
+        return "amd"
     # Pollinations needs no key, so it's always available (network permitting)
     return "pollinations"
 
@@ -155,6 +204,28 @@ def chat(system: str, user: str, max_tokens: int = 512,
     On failure returns (None, reason) — e.g. (None, 'all providers failed').
     The caller MUST fall back honestly and label the fallback as heuristic.
     """
+    # -1. AMD Developer Cloud (MI300X / ROCm / vLLM) — only when configured.
+    #    On any failure, fall through honestly to the providers below.
+    amd_base = os.environ.get("AMD_LLM_BASE_URL", "").strip()
+    amd_reason = "not configured"
+    if amd_base:
+        amd_key = os.environ.get("AMD_LLM_API_KEY", "").strip()
+        amd_model = os.environ.get("AMD_LLM_MODEL", "").strip() \
+            or _amd_discover_model(amd_base, amd_key)
+        if amd_model:
+            r = _amd_chat(amd_base, amd_key, amd_model, system, user,
+                          max_tokens, temperature)
+            if r["ok"]:
+                text = _groq_extract(r["body"])  # OpenAI-compatible format
+                if text:
+                    return text, f"amd:{amd_model}"
+                amd_reason = "empty response"
+            else:
+                amd_reason = (f"HTTP {r['status']}" if r["status"]
+                              else r["detail"][:80])
+        else:
+            amd_reason = "could not discover served model at /models"
+
     # 0. Pollinations.ai — zero signup, zero key. Try first.
     #    Skip only if explicitly disabled via POLLINATIONS_DISABLE=1.
     if not os.environ.get("POLLINATIONS_DISABLE"):
@@ -209,7 +280,7 @@ def chat(system: str, user: str, max_tokens: int = 512,
             return None, "gemini: rate limited (429) — free tier quota hit, try later"
         return None, f"gemini failed: HTTP {status}: {detail[:120]}" if status else f"gemini failed: {detail[:120]}"
 
-    return None, f"no LLM available (pollinations: {pollinations_reason}; set GROQ_API_KEY or GEMINI_API_KEY)"
+    return None, f"no LLM available (amd: {amd_reason}; pollinations: {pollinations_reason}; set GROQ_API_KEY or GEMINI_API_KEY)"
 
 
 if __name__ == "__main__":
