@@ -234,7 +234,7 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
       <button id="roleCustomer" class="rolebtn" onclick="setRole('customer')">👤 Customer</button>
       <button id="roleManager" class="rolebtn on" onclick="setRole('manager')">🧑‍💼 Manager</button>
     </div>
-    <div class="status" id="sysStatus"><span class="dot"></span><span>connecting…</span></div>
+    <div class="status" id="sysStatus"><span class="dot"></span><span>warming up the brain…</span></div>
   </div>
 
   <div class="demo">Demo data notice — dealership “Velocity Motors” and every customer, vehicle &amp; ticket shown here are <b>fictional</b> (see <code>app/seed.py</code>). The graph engine and agent logic are 100% real.</div>
@@ -617,8 +617,12 @@ async function showAlerts(){
     b.innerHTML=(rows.length?rows.map(a=>{
       const badge=a.outcome==='webhook_sent'?`<span class="badge done">sent ✓ (HTTP ${a.http_status})</span>`
         :a.outcome==='webhook_failed'?`<span class="badge overdue">failed ❌</span>`
+        :a.outcome==='reminder_logged'?`<span class="badge due">reminder logged 📝</span>`
         :`<span class="badge due">preview only</span>`;
-      const ev=a.event==='callback_overdue'?'📞 Missed callback':'🤝 Broken promise';
+      const ev=a.event==='callback_overdue'?'📞 Missed callback'
+        :a.event==='promise_overdue'?'🤝 Broken promise'
+        :a.event==='promise_reminder'?'⏳ Promise reminder'
+        :esc(a.event||'alert');
       return `<div class="cbrow" style="margin-bottom:8px">
         <div class="rowhead"><b>${ev}</b>${badge}</div>
         <div class="sub">${esc(a.reason||'')}<br>👤 ${esc(a.customer_name||'')} · ${esc(a.customer_phone||'')} · 🧑‍💼 ${esc(a.staff||'')}<br>⏰ ${a.created_at?new Date(a.created_at).toLocaleString():'—'} · ref ${esc(a.ref_id||'')} · id ${esc(a.id||'')}</div>
@@ -644,7 +648,11 @@ async function showPromises(){
   try{
     const j=await (await fetch('/api/promises')).json();
     const rows=j.promises||[];
-    b.innerHTML=(rows.length?rows.map(p=>{
+    const watchBar=`<div class="watchbar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid rgba(56,189,248,.25);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(56,189,248,.05)">
+      <span>🤖 <b>Promise Watch</b> — agent sweep: reminders for due-soon promises, escalation for overdue ones, every step written to the Alert Log.</span>
+      <button class="btn ghost" style="margin-left:auto" onclick="runPromiseWatch()">▶ Run sweep</button>
+    </div><div id="watchOut"></div>`;
+    b.innerHTML=watchBar+(rows.length?rows.map(p=>{
       const badge=p.status==='done'?`<span class="badge done">kept ✓</span>`
         :p.overdue?`<span class="badge overdue">broken · ${fmtDur(p.overdue_ms)} late</span>`
         :`<span class="badge due">due in ${fmtDur(p.due_in_ms)}</span>`;
@@ -667,6 +675,27 @@ async function showPromises(){
       <button class="btn ghost" onclick="addPromise()">+ Log promise</button>
     </div>`;
   }catch(e){b.textContent='Failed: '+e.message;}
+}
+async function runPromiseWatch(){
+  let slot=$('watchOut');
+  if(slot)slot.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> agent sweeping promises…';
+  try{
+    const j=await (await fetch('/api/promise/watch',{method:'POST'})).json();
+    const a=j.actions||{escalated:[],reminded:[],skipped:[]};
+    const c=j.counts||{};
+    const bits=[];
+    (a.escalated||[]).forEach(e=>bits.push(`🚨 Escalated <b>${esc(e.customer||'')}</b> — “${esc(e.promise||'')}” (${e.sent?'webhook sent':'preview logged'})`));
+    (a.reminded||[]).forEach(r=>bits.push(`⏳ Reminder logged for <b>${esc(r.customer||'')}</b> — “${esc(r.promise||'')}”`));
+    const html=`<div class="alertbox ok" style="margin-bottom:10px">🤖 <b>Promise Watch complete</b><br>
+      🚨 Escalated <b>${a.escalated.length}</b> overdue · ⏳ reminded <b>${a.reminded.length}</b> due-soon · ⏭️ skipped ${a.skipped.length} (already logged)<br>
+      <span style="color:var(--dim)">Open now: ${c.overdue||0} overdue · ${c.due_soon||0} due soon · ${c.ok||0} on track · ${c.done||0} kept.</span>`+
+      (bits.length?`<br><br>${bits.join('<br>')}`:'')+`</div>`;
+    await showPromises();refreshBadges();refreshAlerts();
+    slot=$('watchOut');if(slot)slot.innerHTML=html;
+    toast('Promise Watch done — escalations + reminders logged.');
+  }catch(e){
+    slot=$('watchOut');if(slot)slot.innerHTML=`<div class="alertbox">❌ ${esc(e.message)}</div>`;
+  }
 }
 async function addPromise(){
   const body={customer_name:$('prName').value.trim(),customer_phone:$('prPhone').value.trim()||'+923000000000',
@@ -800,10 +829,11 @@ async function showSmartMatch(){
   try{
     const j=await (await fetch('/api/vehicles')).json();
     const vs=j.vehicles||[];
+    const bt=(b)=>b==='suv'?'SUV':(b?b.charAt(0).toUpperCase()+b.slice(1):'');
     b.innerHTML=`<div class="formgrid">
       <label>🎯 Smart match — new arrival → best customers + drafted follow-ups</label>
       <select id="smVehicle" style="background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:10px">
-        ${vs.map(v=>`<option value="${esc(v.stock_no)}">${esc(v.stock_no)} — ${esc(v.year)} ${esc(v.make)} ${esc(v.model)} · PKR ${(v.price||0).toLocaleString()} · ${esc(v.body_type)}</option>`).join('')}
+        ${vs.map(v=>`<option value="${esc(v.stock_no)}">${esc(v.stock_no)} — ${esc(v.year)} ${esc(v.make)} ${esc(v.model)} · PKR ${(v.price||0).toLocaleString()} · ${esc(bt(v.body_type))}</option>`).join('')}
       </select>
       <button class="btn ghost" onclick="runSmartMatch()">🎯 Find matches</button>
     </div>
@@ -842,8 +872,10 @@ async function runSmartMatch(){
   const stock=$('smVehicle').value;
   const box=$('smResults');
   box.innerHTML='<span class="spin" style="border-top-color:var(--cy)"></span> matching customers…';
+  const ctrl=new AbortController();
+  const to=setTimeout(()=>ctrl.abort(),20000);
   try{
-    const j=await (await fetch('/api/smart-match',{method:'POST',
+    const j=await (await fetch('/api/smart-match',{method:'POST',signal:ctrl.signal,
       headers:{'Content-Type':'application/json'},body:JSON.stringify({stock_no:stock})})).json();
     if(!j.ok)throw new Error(j.error||'match failed');
     const v=j.vehicle,ms=j.matches||[];
@@ -861,7 +893,8 @@ async function runSmartMatch(){
             <span style="font-size:11px;color:var(--faint)">drafted by ${esc(m.draft_provider||'template')}</span>
           </div>
         </div>`).join(''):'<div style="color:var(--dim)">No matching customers found.</div>');
-  }catch(e){box.innerHTML=`<div style="color:var(--bad)">Match failed: ${esc(e.message)}</div>`;}
+  }catch(e){box.innerHTML=`<div style="color:var(--bad)">Match failed: ${esc(e.name==='AbortError'?'request timed out after 20s':e.message)}</div>`;
+  }finally{clearTimeout(to);}
 }
 function copyDraft(btn){
   const msg=btn.closest('.matchrow').querySelector('.matchmsg').textContent;
@@ -1052,7 +1085,7 @@ async function showLeaderboard(){
         <div class="lbrow${i===0?' top1':i===1?' top2':i===2?' top3':''}">
           <div class="lbmedal">${medals[i]||'👤'}</div>
           <div class="who"><b>${esc(s.name)}</b>
-            <div class="sub">${esc(s.role||'staff')} · 📞 ${s.cb_done}/${s.cb_total} callbacks done (${s.cb_compliance}% on-time) · 🤝 ${s.pr_kept}/${s.pr_total} promises kept${s.pr_overdue?` · <span style="color:var(--bad)">${s.pr_overdue} overdue</span>`:''}</div>
+            <div class="sub">${esc(s.role||'staff')} · 📞 ${s.cb_done}/${s.cb_total} callbacks done (${s.cb_compliance}% of completed on-time) · 🤝 ${s.pr_kept}/${s.pr_total} promises kept${s.pr_overdue?` · <span style="color:var(--bad)">${s.pr_overdue} overdue</span>`:''}</div>
           </div>
           <div class="lbscore">${s.score}</div>
         </div>`).join(''):'<div style="color:var(--dim)">No staff data.</div>');
@@ -1066,6 +1099,7 @@ function chipSend(el){$('msg').value=el.textContent;send();}
 
 // boot
 (async()=>{
+  $('sysStatus').innerHTML='<span class="dot"></span><span>warming up the brain…</span>';
   try{
     const s=await (await fetch('/api/status')).json();
     $('sysStatus').innerHTML=`<span class="dot"></span><span>FalkorDB <b>${esc(s.falkordb_mode||'?')}</b> · LLM <b>${esc(s.llm_provider||'?')}</b></span>`;
