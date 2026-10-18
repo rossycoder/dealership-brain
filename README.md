@@ -27,8 +27,12 @@ UI** ("Start free trial") and gets its **own private workspace**:
   Growth $1,200/mo, one-time setup $1,500 (see the in-app Pricing view).
   Activation is manual for now.
 - **Persistence note** — with a real FalkorDB (`FALKOR_HOST`, e.g. FalkorDB
-  Cloud) workspaces persist. On Vercel's in-memory fallback they reset on
-  cold start; `/api/status` reports the mode honestly (`saas.persistence`).
+  Cloud) workspace data AND accounts persist: accounts/workspaces/sessions
+  mirror into a dedicated `saas_meta` graph (verified locally: signup →
+  server restart with an empty local cache → login, session and tenant data
+  all survive). On Vercel's in-memory fallback (no `FALKOR_HOST` set) data
+  resets on cold start; `/api/status` reports the mode honestly
+  (`saas.persistence`).
 
 ## Why this can win (3 tracks, 1 project)
 

@@ -1,8 +1,12 @@
 fastapi>=0.110
 uvicorn>=0.29
 pydantic>=2.0
-falkordb>=1.0
-falkordblite>=0.10.0
 python-dotenv>=1.0
 httpx>=0.27
 mangum>=0.19
+falkordb>=1.0
+# ^ FalkorDB CLIENT only (pure Python; talks to an external FalkorDB server —
+# e.g. FalkorDB Cloud — when FALKOR_HOST is set). falkordblite stays EXCLUDED:
+# its redislite native binaries add ~70MB and can never run on Vercel
+# serverless anyway. For local embedded FalkorDB mode run:
+#   pip install falkordblite
