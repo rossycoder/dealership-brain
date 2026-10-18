@@ -8,6 +8,28 @@ every decision reads from the graph, every turn writes back to it.
 > vehicles, tickets and policies are **fictional** (`app/seed.py`). The UI
 > and `/api/status` say this explicitly. Nothing is presented as real.
 
+## 💼 SaaS mode (multi-tenant)
+
+Dealership Brain is also a SaaS product. Any dealership can **sign up in the
+UI** ("Start free trial") and gets its **own private workspace**:
+
+- **Accounts** — `app/accounts.py`: email + PBKDF2-hashed password, opaque
+  bearer-token sessions (30 days). One account = one workspace.
+- **Tenancy** — every workspace is its own graph (`dealership_<slug>` on
+  FalkorDB; a separate in-memory graph in serverless fallback mode). No
+  workspace can see another's data — verified by tests (signup → starter
+  kit → isolation → auth guards, 22 checks).
+- **Starter kit** — a new workspace starts EMPTY of customers/vehicles
+  (no fictional data) with the owner as staff + a standard policy pack
+  (`app/seed.py: seed_workspace`). The fictional dataset exists only in
+  the public **demo** workspace.
+- **Trial & pricing** — 14-day free trial, no card. Plans: Care $600/mo,
+  Growth $1,200/mo, one-time setup $1,500 (see the in-app Pricing view).
+  Activation is manual for now.
+- **Persistence note** — with a real FalkorDB (`FALKOR_HOST`, e.g. FalkorDB
+  Cloud) workspaces persist. On Vercel's in-memory fallback they reset on
+  cold start; `/api/status` reports the mode honestly (`saas.persistence`).
+
 ## Why this can win (3 tracks, 1 project)
 
 | Track | How we hit it |
@@ -72,6 +94,7 @@ python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 | Cross-session memory | ✅ REAL (per-phone conversation history in graph) |
 | Churn-risk detection + escalation | ✅ REAL (Cypher aggregation → action) |
 | SLA escalation alerts (n8n) + Alert Log audit trail | ✅ REAL (webhook POST when `N8N_WEBHOOK_URL` set; every attempt logged as `(:Alert)` newest-first) |
+| Promise Watch agent (Graph Hacks Day-1) | ✅ REAL (sweep: reminders for due-soon promises, churn-style escalation for overdue, dedupe via Alert Log; `GET /api/promise/tracking`, `POST /api/promise/watch`) |
 | Demo dataset | ⚠️ FICTIONAL (clearly labeled everywhere) |
 | LLM replies (default) | ⚠️ HEURISTIC (labeled `heuristic`; swap to `openai` via env) |
 
