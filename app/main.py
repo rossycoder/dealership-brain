@@ -14,7 +14,9 @@ All data is FICTIONAL demo data (see app/seed.py). UI says so.
 """
 import os
 import time
-from fastapi import FastAPI
+from contextvars import ContextVar
+
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -22,10 +24,45 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app import graph as G
+from app import accounts
 from app import agents
 from app import llm
 
 app = FastAPI(title="Dealership Brain — Graph Hacks prep")
+
+# --- SaaS tenancy -----------------------------------------------------------
+# Every request belongs to a workspace (tenant). A valid session token
+# (Authorization: Bearer ...) selects that account's workspace; anything else
+# lands in the public "demo" workspace, so the demo keeps working openly
+# while real dealership data stays private behind login.
+_tenant_var: ContextVar[str] = ContextVar("tenant_slug", default="demo")
+
+
+class _TenantMiddleware:
+    """Pure ASGI middleware: resolve the tenant BEFORE routing so the
+    contextvar is visible inside every endpoint (BaseHTTPMiddleware would
+    run the endpoint in a copied context)."""
+
+    def __init__(self, asgi_app):
+        self.app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            slug = "demo"
+            try:
+                headers = dict(scope.get("headers") or [])
+                auth = headers.get(b"authorization", b"").decode("latin1")
+                if auth.lower().startswith("bearer "):
+                    acct = accounts.account_for_token(auth[7:].strip())
+                    if acct:
+                        slug = acct["workspace_slug"]
+            except Exception:
+                slug = "demo"
+            _tenant_var.set(slug)
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_TenantMiddleware)
 
 
 class ChatIn(BaseModel):
@@ -78,10 +115,15 @@ def index_via_rewrite():
 
 @app.get("/api/status")
 def status():
-    _, mode = G.get_graph()
+    _, mode = G.get_tenant_graph(_tenant_var.get())
     out = {
         "falkordb_mode": mode,  # embedded | external | memory (fallback)
         "graph": G.GRAPH_NAME,
+        "workspace": _tenant_var.get(),
+        "saas": {
+            "tenancy": True,
+            "persistence": "persistent" if mode != "memory" else "in-memory (resets on cold start)",
+        },
         "llm_provider": llm.provider_name(),
         "demo_data": True,
         "demo_data_note": "All customers, vehicles, tickets are FICTIONAL (app/seed.py).",
@@ -94,10 +136,22 @@ def status():
     return out
 
 
+def _current_slug():
+    return _tenant_var.get()
+
+
 def _need_graph():
-    """Return graph (never crashes — get_graph falls back to memory mode)."""
-    graph, _ = G.get_graph()
+    """Return the CURRENT workspace's graph (never crashes — falls back to memory)."""
+    graph, _ = G.get_tenant_graph(_current_slug())
     return graph
+
+
+def _dealer_brand():
+    slug = _current_slug()
+    if slug == "demo":
+        return "Velocity Motors"
+    ws = accounts.workspace_for_slug(slug)
+    return (ws or {}).get("name") or "Velocity Motors"
 
 
 @app.post("/api/chat")
@@ -129,9 +183,102 @@ def graph_stats():
 
 @app.post("/api/seed")
 def reseed():
+    if _current_slug() != "demo":
+        return JSONResponse({"ok": False, "error": "reseed is demo-workspace only"},
+                            status_code=403)
     from app import seed as seedmod  # lazy: only needed for manual reseeds
     seedmod.seed()
     return {"ok": True, "note": "reseeded with FICTIONAL demo data"}
+
+
+# ---------------------------------------------------------------------------
+# SaaS — accounts, login, workspace info
+# ---------------------------------------------------------------------------
+
+class SignupIn(BaseModel):
+    dealership_name: str
+    owner_name: str = ""
+    email: str
+    password: str
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+def _bearer(request: Request):
+    auth = request.headers.get("authorization") or ""
+    return auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+
+
+@app.post("/api/auth/signup")
+def signup(body: SignupIn):
+    res, err = accounts.create_account(body.owner_name, body.email,
+                                       body.password, body.dealership_name)
+    if err:
+        code = 409 if "already exists" in err else 400
+        return JSONResponse({"ok": False, "error": err}, status_code=code)
+    # Starter kit for the new workspace: owner as staff + standard policies.
+    # NO fictional demo data — the dealership adds its own real data.
+    try:
+        from app import seed as seedmod
+        graph, mode = G.get_tenant_graph(res["workspace"]["slug"])
+        seedmod.seed_workspace(graph, mode, res["workspace"]["name"],
+                               body.owner_name or "Owner")
+    except Exception:
+        pass  # workspace exists; starter kit is best-effort
+    return {"ok": True, **res}
+
+
+@app.post("/api/auth/login")
+def login(body: LoginIn):
+    res = accounts.authenticate(body.email, body.password)
+    if not res:
+        return JSONResponse({"ok": False, "error": "wrong email or password"},
+                            status_code=401)
+    return {"ok": True, **res}
+
+
+@app.get("/api/auth/me")
+def me(request: Request):
+    acct = accounts.account_for_token(_bearer(request))
+    if not acct:
+        return JSONResponse({"ok": False, "error": "not logged in"}, status_code=401)
+    return {"ok": True, "account": acct, "workspace": acct["workspace"]}
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request):
+    accounts.logout(_bearer(request))
+    return {"ok": True}
+
+
+@app.get("/api/workspace")
+def workspace_info():
+    slug = _current_slug()
+    graph = _need_graph()
+    counts = {}
+    try:
+        if G._is_memory(graph):
+            counts = graph.stats()
+        else:
+            res = graph.query("MATCH (n) RETURN labels(n)[0] AS label, count(n) AS c")
+            counts = {r[0]: r[1] for r in res.result_set}
+    except Exception:
+        counts = {}
+    if slug == "demo":
+        ws = {"slug": "demo", "name": "Velocity Motors (Demo)",
+              "plan": "demo", "trial_days_left": None}
+    else:
+        ws = accounts.workspace_for_slug(slug) or {"slug": slug, "name": slug,
+                                                    "plan": "trial"}
+    return {"ok": True, "workspace": ws, "counts": counts,
+            "onboarding": {
+                "has_vehicles": counts.get("Vehicle", 0) > 0,
+                "has_customers": counts.get("Customer", 0) > 0,
+                "has_staff": counts.get("Staff", 0) > 0,
+            }}
 
 
 # ---------------------------------------------------------------------------
@@ -299,10 +446,11 @@ def _draft_followup(name, phone, vehicle, reasons, provider_label_out=None, dead
     """
     v_desc = f"{vehicle.get('year')} {vehicle.get('make')} {vehicle.get('model')}"
     price = vehicle.get("price") or 0
+    brand = _dealer_brand()
     template = (
         f"Hi {name}! A new {v_desc} ({vehicle.get('colour')}) just arrived at "
         f"PKR {price:,.0f} — it matches your interest and budget. "
-        f"Want a free 30-minute test drive this week? — Velocity Motors"
+        f"Want a free 30-minute test drive this week? — {brand}"
     )
     try:
         from app import free_llm
@@ -311,7 +459,7 @@ def _draft_followup(name, phone, vehicle, reasons, provider_label_out=None, dead
             system = ("You are a car dealership sales assistant. Write a short, warm, "
                       "personalized WhatsApp follow-up message (max 3 sentences) for a "
                       "customer about a newly arrived vehicle. Use ONLY the given facts. "
-                      "No invented prices. Sign off as '— Velocity Motors'.")
+                      f"No invented prices. Sign off as '— {brand}'.")
             user = (f"Customer: {name} ({phone}). Reasons this car fits: "
                     f"{'; '.join(reasons)}. Vehicle: {v_desc}, colour {vehicle.get('colour')}, "
                     f"body {vehicle.get('body_type')}, price PKR {price:,.0f}.")

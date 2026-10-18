@@ -22,11 +22,12 @@ class MemoryGraph:
     """Pure-Python property graph. Nodes are dicts: {id, labels, props}.
     Relationships are dicts: {from_id, to_id, type}."""
 
-    def __init__(self):
+    def __init__(self, seed_demo=True):
         self._nodes = {}  # id -> {labels: [...], props: {...}}
         self._rels = []   # [{from, to, type}]
         self._next_id = 1
-        self._seed()
+        if seed_demo:
+            self._seed()
 
     def _add_node(self, labels, props):
         nid = self._next_id

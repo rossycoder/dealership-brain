@@ -125,6 +125,44 @@ def get_graph(auto_seed=True):
     return graph, mode
 
 
+# Per-tenant memory graphs (SaaS workspaces) — slug -> MemoryGraph
+_tenant_memory_graphs = {}
+
+
+def _get_tenant_memory_graph(slug):
+    g = _tenant_memory_graphs.get(slug)
+    if g is None:
+        from app.memory_graph import MemoryGraph
+        g = MemoryGraph(seed_demo=False)
+        _tenant_memory_graphs[slug] = g
+    return g
+
+
+def get_tenant_graph(slug):
+    """Return (graph, mode) for a SaaS workspace (tenant).
+
+    'demo' (or empty) = the original single demo graph (get_graph()).
+    Any other slug gets its OWN graph — FalkorDB: a separate named graph
+    'dealership_<slug>'; memory fallback: a separate EMPTY MemoryGraph.
+    Tenant graphs are NEVER seeded with the fictional demo dataset;
+    app.seed.seed_workspace() gives a new workspace its starter kit.
+    """
+    if not slug or slug == "demo":
+        return get_graph()
+    try:
+        db, mode = get_db()
+    except Exception:
+        return _get_tenant_memory_graph(slug), "memory"
+    if mode == "memory":
+        return _get_tenant_memory_graph(slug), "memory"
+    graph = db.select_graph("dealership_" + slug)
+    try:
+        ensure_schema(graph)
+    except Exception:
+        pass
+    return graph, mode
+
+
 def wipe_graph(graph):
     """Delete everything (fresh demo reset)."""
     if _is_memory(graph):

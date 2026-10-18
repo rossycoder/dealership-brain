@@ -152,5 +152,31 @@ def seed():
         print(f"  {row[0]}: {row[1]}")
 
 
+def seed_workspace(graph, mode, dealer_name, owner_name):
+    """Starter kit for a NEW SaaS workspace: the owner as staff + the standard
+    policy pack. Deliberately NO customers and NO vehicles — a real dealership
+    adds its own data. (The fictional dataset lives only in seed(), demo-only.)
+    """
+    policies = [
+        ("warranty", "All new vehicles include a 3-year / 60,000 km warranty. Extended warranty available up to 5 years."),
+        ("return", "7-day exchange policy on certified pre-owned vehicles, no questions asked."),
+        ("financing", "In-house financing available: 20% down payment, up to 5-year terms, approval within 2 hours."),
+        ("test_drive", "Test drives are free and take 30 minutes. Bring your driving license."),
+    ]
+    if mode == "memory":
+        graph._add_node("Staff", {"name": owner_name or "Owner", "role": "owner"})
+        for topic, content in policies:
+            graph._add_node("Policy", {"topic": topic, "content": content})
+        return
+
+    def esc(s):
+        return (s or "").replace("'", "\\'")
+
+    graph.query(f"CREATE (:Staff {{name:'{esc(owner_name or 'Owner')}', role:'owner'}})")
+    creates = ",\n".join(
+        f"(:Policy {{topic:'{t}', content:'{esc(c)}'}})" for t, c in policies)
+    graph.query(f"CREATE {creates}")
+
+
 if __name__ == "__main__":
     seed()
