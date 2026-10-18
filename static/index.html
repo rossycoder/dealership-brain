@@ -218,6 +218,26 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
 .alertbox{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.3);border-radius:12px;
   padding:10px 12px;font-size:12px;margin-top:8px;white-space:pre-wrap;word-break:break-word}
 .alertbox.ok{background:rgba(52,211,153,.06);border-color:rgba(52,211,153,.3)}
+.saasbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 4px}
+.wsbadge{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:7px 12px}
+.modal{position:fixed;inset:0;background:rgba(2,6,17,.72);display:flex;align-items:center;justify-content:center;z-index:99;padding:16px}
+.modalbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;max-width:400px;width:100%;position:relative;max-height:92vh;overflow:auto}
+.modalbox.wide{max-width:780px}
+.modalbox h3{margin:0 0 14px}
+.modalbox .field{margin-bottom:10px}
+.modalbox input{width:100%}
+.mx{position:absolute;top:10px;right:12px;background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer}
+.autherr{color:#f87171;font-size:12px;min-height:16px;margin:4px 0 8px}
+.authswitch,.authnote{font-size:12px;color:var(--dim);margin-top:12px;line-height:1.5}
+.authswitch a{color:#93c5fd}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.plan{border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--panel2)}
+.plan.hot{border-color:var(--vio)}
+.plan h4{margin:0 0 6px}
+.plan .price{font-size:24px;font-weight:700;margin-bottom:8px}
+.plan .price span{font-size:12px;color:var(--dim);font-weight:400}
+.plan ul{margin:0 0 12px;padding-left:16px;font-size:12px;color:var(--dim)}
+.plan ul li{margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -237,7 +257,17 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
     <div class="status" id="sysStatus"><span class="dot"></span><span>warming up the brain…</span></div>
   </div>
 
-  <div class="demo">Demo data notice — dealership “Velocity Motors” and every customer, vehicle &amp; ticket shown here are <b>fictional</b> (see <code>app/seed.py</code>). The graph engine and agent logic are 100% real.</div>
+  <div class="saasbar">
+    <span class="wsbadge" id="wsBadge">🏢 Demo workspace: Velocity Motors</span>
+    <button class="rolebtn" type="button" onclick="openPricing()">💲 Pricing</button>
+    <button class="rolebtn" type="button" id="btnLogin" onclick="openAuth('login')">Login</button>
+    <button class="rolebtn on" type="button" id="btnSignup" onclick="openAuth('signup')">Start free trial</button>
+    <button class="rolebtn" type="button" id="btnLogout" style="display:none" onclick="saasLogout()">Logout</button>
+  </div>
+
+  <div class="demo" id="demoNotice">Demo data notice — dealership “Velocity Motors” and every customer, vehicle &amp; ticket shown here are <b>fictional</b> (see <code>app/seed.py</code>). The graph engine and agent logic are 100% real.</div>
+
+  <div class="demo" id="onboardBar" style="display:none;background:rgba(52,211,153,.07);border-color:rgba(52,211,153,.35)"></div>
 
   <div class="grid">
     <!-- CHAT -->
@@ -1109,6 +1139,147 @@ function chipSend(el){$('msg').value=el.textContent;send();}
     [{t:'falkordb memory',c:'v'},{t:'multi-agent',c:'g'}]);
   refreshBadges();
 })();
+</script>
+
+<!-- ================= SaaS: auth, workspaces, pricing ================= -->
+<div class="modal" id="authModal" style="display:none">
+  <div class="modalbox">
+    <button class="mx" type="button" onclick="closeAuth()">✕</button>
+    <h3 id="authTitle">Welcome back</h3>
+    <div class="field" id="fDealership"><label>Dealership name</label><input id="aDealer" placeholder="e.g. City Motors"></div>
+    <div class="field" id="fOwner"><label>Your name</label><input id="aOwner" placeholder="Your full name"></div>
+    <div class="field"><label>Email</label><input id="aEmail" type="email" placeholder="you@dealership.com"></div>
+    <div class="field"><label>Password (min 8 characters)</label><input id="aPass" type="password" placeholder="••••••••"></div>
+    <div class="autherr" id="authErr"></div>
+    <button class="btn" id="authSubmit" type="button" onclick="submitAuth()" style="width:100%">Login</button>
+    <p class="authswitch" id="authSwitch"></p>
+    <p class="authnote">Free 14-day trial — no card needed. Aap ka data sirf aap ke apne workspace me rehta hai; koi aur dealership use nahi dekh sakti.</p>
+  </div>
+</div>
+
+<div class="modal" id="pricingModal" style="display:none">
+  <div class="modalbox wide">
+    <button class="mx" type="button" onclick="closePricing()">✕</button>
+    <h3>Dealership Brain — Pricing</h3>
+    <div class="plans">
+      <div class="plan"><h4>Free Trial</h4><div class="price">$0 <span>14 days</span></div>
+        <ul><li>All features unlocked</li><li>Your own private workspace</li><li>No card needed</li></ul>
+        <button class="btn" type="button" onclick="closePricing();openAuth('signup')">Start free</button></div>
+      <div class="plan hot"><h4>Care</h4><div class="price">$600 <span>/month</span></div>
+        <ul><li>Everything in Trial</li><li>Callback SLA + Promise Watch agents</li><li>Staff leaderboard &amp; alert log</li><li>Email support</li></ul>
+        <button class="btn" type="button" onclick="closePricing();openAuth('signup')">Start with trial</button></div>
+      <div class="plan"><h4>Growth</h4><div class="price">$1,200 <span>/month</span></div>
+        <ul><li>Everything in Care</li><li>Smart Match + follow-up agent</li><li>Priority support</li><li>Monthly performance review</li></ul>
+        <button class="btn" type="button" onclick="closePricing();openAuth('signup')">Start with trial</button></div>
+    </div>
+    <p class="authnote">One-time setup: $1,500 (done-for-you onboarding — hum aap ki inventory aur team set kar dete hain). Activation abhi manual hai: trial shuru karein, payment hum aap se personally arrange karenge — shuru karne ke liye card ki zaroorat nahi.</p>
+  </div>
+</div>
+
+<script>
+/* Dealership Brain SaaS layer — attaches the session token to every /api/
+   call, and drives the login/signup/pricing UI. The demo workspace needs no
+   token and keeps working exactly as before. */
+(function(){
+  var _fetch = window.fetch.bind(window);
+  window.fetch = function(url, opts){
+    opts = opts || {};
+    try {
+      var t = localStorage.getItem('db_token');
+      if (t && typeof url === 'string' && url.indexOf('/api/') === 0) {
+        var h = new Headers(opts.headers || {});
+        if (!h.has('Authorization')) h.set('Authorization', 'Bearer ' + t);
+        opts = Object.assign({}, opts, {headers: h});
+      }
+    } catch(e) {}
+    return _fetch(url, opts);
+  };
+})();
+
+function saasToken(){ try { return localStorage.getItem('db_token'); } catch(e){ return null; } }
+
+async function saasInit(){
+  var t = saasToken();
+  var badge = document.getElementById('wsBadge');
+  if (!t) { if (badge) badge.textContent = '🏢 Demo workspace: Velocity Motors'; return; }
+  try {
+    var r = await fetch('/api/auth/me');
+    if (!r.ok) throw 0;
+    var j = await r.json();
+    var ws = j.workspace || {};
+    if (badge) badge.textContent = '🏢 ' + (ws.name || 'My workspace') +
+      (ws.plan === 'trial' ? ' · Free trial — ' + (ws.trial_days_left != null ? ws.trial_days_left : 0) + ' days left' : '');
+    document.getElementById('btnLogin').style.display = 'none';
+    document.getElementById('btnSignup').style.display = 'none';
+    document.getElementById('btnLogout').style.display = '';
+    var dn = document.getElementById('demoNotice'); if (dn) dn.style.display = 'none';
+    var w = await (await fetch('/api/workspace')).json();
+    if (w && w.onboarding && !w.onboarding.has_vehicles) {
+      var ob = document.getElementById('onboardBar');
+      if (ob) {
+        ob.style.display = '';
+        ob.innerHTML = '<b>Welcome to your workspace!</b> Yeh sirf aap ki dealership ka data hai — ' +
+          'kisi aur ko nazar nahi aata. Shuru karein: <b>1)</b> Vehicles tool se apni pehli gaari add karein, ' +
+          '<b>2)</b> chat me ek test message bhejein, <b>3)</b> apni team ke liye callbacks aur promises set karein.';
+      }
+    }
+  } catch(e) {
+    try { localStorage.removeItem('db_token'); } catch(_){}
+  }
+}
+
+function openAuth(mode){
+  document.getElementById('authModal').style.display = 'flex';
+  switchAuth(mode || 'login');
+}
+function closeAuth(){ document.getElementById('authModal').style.display = 'none'; }
+function switchAuth(mode){
+  document.getElementById('authTitle').textContent = mode === 'signup' ? 'Start your free trial' : 'Welcome back';
+  document.getElementById('fDealership').style.display = mode === 'signup' ? '' : 'none';
+  document.getElementById('fOwner').style.display = mode === 'signup' ? '' : 'none';
+  document.getElementById('authSubmit').textContent = mode === 'signup' ? 'Create my workspace' : 'Login';
+  document.getElementById('authSwitch').innerHTML = mode === 'signup'
+    ? 'Pehle se account hai? <a href="#" onclick="switchAuth(\'login\');return false;">Login</a>'
+    : 'Account nahi hai? <a href="#" onclick="switchAuth(\'signup\');return false;">Free trial shuru karein</a>';
+  document.getElementById('authModal').dataset.mode = mode;
+  document.getElementById('authErr').textContent = '';
+}
+
+async function submitAuth(){
+  var mode = document.getElementById('authModal').dataset.mode || 'login';
+  var err = document.getElementById('authErr');
+  err.textContent = '';
+  var body, url;
+  if (mode === 'signup') {
+    body = { dealership_name: document.getElementById('aDealer').value.trim(),
+             owner_name: document.getElementById('aOwner').value.trim(),
+             email: document.getElementById('aEmail').value.trim(),
+             password: document.getElementById('aPass').value };
+    url = '/api/auth/signup';
+  } else {
+    body = { email: document.getElementById('aEmail').value.trim(),
+             password: document.getElementById('aPass').value };
+    url = '/api/auth/login';
+  }
+  try {
+    var r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    var j = await r.json();
+    if (!r.ok || !j.ok) { err.textContent = (j && j.error) || 'Something went wrong'; return; }
+    localStorage.setItem('db_token', j.token);
+    location.reload();
+  } catch(e) { err.textContent = 'Network error — try again'; }
+}
+
+async function saasLogout(){
+  try { await fetch('/api/auth/logout', {method:'POST'}); } catch(e){}
+  try { localStorage.removeItem('db_token'); } catch(e){}
+  location.reload();
+}
+
+function openPricing(){ document.getElementById('pricingModal').style.display = 'flex'; }
+function closePricing(){ document.getElementById('pricingModal').style.display = 'none'; }
+
+document.addEventListener('DOMContentLoaded', saasInit);
 </script>
 </body>
 </html>
