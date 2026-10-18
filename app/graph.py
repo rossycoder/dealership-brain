@@ -49,7 +49,18 @@ def get_db():
             from falkordb import FalkorDB
             port = int(os.environ.get("FALKOR_PORT", "6379"))
             password = os.environ.get("FALKOR_PASSWORD") or None
-            db = FalkorDB(host=host, port=port, password=password)
+            username = os.environ.get("FALKOR_USERNAME") or None
+            use_ssl = (os.environ.get("FALKOR_SSL") or "").strip().lower() in ("1", "true", "yes")
+            kwargs = {"host": host, "port": port, "password": password}
+            if username:
+                kwargs["username"] = username
+            if use_ssl:
+                kwargs["ssl"] = True
+            try:
+                db = FalkorDB(**kwargs)
+            except TypeError:
+                # Older client without username/ssl kwargs — plain connection.
+                db = FalkorDB(host=host, port=port, password=password)
             _last_error = None
             return db, "external"
         except Exception as e:

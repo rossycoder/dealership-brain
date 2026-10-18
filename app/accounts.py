@@ -50,6 +50,20 @@ def _load():
         _sessions = data.get("sessions", {})
     except Exception:
         pass
+    # The persistent FalkorDB mirror wins over the local file cache — it is
+    # shared across instances and survives cold starts.
+    for rec in _meta_all("Account"):
+        if rec.get("email"):
+            _accounts[rec["email"]] = rec
+    for rec in _meta_all("Workspace"):
+        if rec.get("slug"):
+            _workspaces[rec["slug"]] = rec
+    now = int(time.time())
+    for rec in _meta_all("Session"):
+        tok = rec.get("token")
+        if tok and rec.get("expires_at", 0) > now:
+            _sessions[tok] = {"email": rec["email"],
+                              "expires_at": rec["expires_at"]}
 
 
 def _save():
@@ -59,6 +73,97 @@ def _save():
                        "sessions": _sessions}, f)
     except Exception:
         pass
+
+
+# --- Persistent mirror in FalkorDB (when a real server is configured) -------
+# Accounts/workspaces/sessions are ALSO written to a dedicated "saas_meta"
+# graph on the real FalkorDB (FalkorDB Cloud or local embedded), so signups
+# survive serverless cold starts and are shared across instances. In pure
+# memory mode there is no server: the mirror is skipped and behaviour is the
+# demo-grade in-memory store. Each record is one JSON `data` property, so no
+# Cypher escaping issues can occur.
+_meta_graph = None
+_meta_tried = False
+
+
+def _meta():
+    global _meta_graph, _meta_tried
+    if _meta_graph is not None:
+        return _meta_graph
+    if _meta_tried:
+        return None
+    _meta_tried = True
+    try:
+        from app import graph as G
+        db, mode = G.get_db()
+        if mode == "memory":
+            return None
+        _meta_graph = db.select_graph("saas_meta")
+    except Exception:
+        _meta_graph = None
+    return _meta_graph
+
+
+def _meta_put(label, key_name, key_val, record):
+    g = _meta()
+    if g is None:
+        return
+    try:
+        g.query(f"MERGE (n:{label} {{{key_name}: $k}}) SET n.data = $d",
+                {"k": key_val, "d": json.dumps(record)})
+    except Exception:
+        pass
+
+
+def _meta_get(label, key_name, key_val):
+    g = _meta()
+    if g is None:
+        return None
+    try:
+        res = g.query(f"MATCH (n:{label} {{{key_name}: $k}}) RETURN n.data",
+                      {"k": key_val})
+        if res.result_set:
+            return json.loads(res.result_set[0][0])
+    except Exception:
+        pass
+    return None
+
+
+def _meta_del(label, key_name, key_val):
+    g = _meta()
+    if g is None:
+        return
+    try:
+        g.query(f"MATCH (n:{label} {{{key_name}: $k}}) DETACH DELETE n",
+                {"k": key_val})
+    except Exception:
+        pass
+
+
+def _meta_all(label):
+    g = _meta()
+    if g is None:
+        return []
+    try:
+        res = g.query(f"MATCH (n:{label}) RETURN n.data")
+        return [json.loads(r[0]) for r in res.result_set]
+    except Exception:
+        return []
+
+
+def _hydrate_account(email):
+    """Pull one account (+ its workspace) from the persistent mirror into the
+    local dicts. Returns the account record or None."""
+    rec = _meta_get("Account", "email", email)
+    if not rec:
+        return None
+    _accounts[email] = rec
+    slug = rec.get("workspace_slug")
+    if slug and slug not in _workspaces:
+        ws = _meta_get("Workspace", "slug", slug)
+        if ws:
+            _workspaces[slug] = ws
+    return rec
 
 
 _load()
@@ -131,6 +236,10 @@ def create_account(owner_name, email, password, dealership_name):
         }
         token = _new_session(email)
         _save()
+        _meta_put("Workspace", "slug", slug, _workspaces[slug])
+        _meta_put("Account", "email", email, _accounts[email])
+        _meta_put("Session", "token", token,
+                  {"token": token, **_sessions[token]})
     return {"account": _public_account(_accounts[email]),
             "workspace": _public_workspace(_workspaces[slug]),
             "token": token}, None
@@ -139,12 +248,16 @@ def create_account(owner_name, email, password, dealership_name):
 def authenticate(email, password):
     email = (email or "").strip().lower()
     acct = _accounts.get(email)
+    if acct is None:
+        acct = _hydrate_account(email)
     if not acct or not secrets.compare_digest(_hash(password, acct["salt"]),
                                               acct["pass_hash"]):
         return None
     with _lock:
         token = _new_session(email)
         _save()
+        _meta_put("Session", "token", token,
+                  {"token": token, **_sessions[token]})
     return {"account": _public_account(acct),
             "workspace": _public_workspace(_workspaces[acct["workspace_slug"]]),
             "token": token}
@@ -152,9 +265,14 @@ def authenticate(email, password):
 
 def account_for_token(token):
     sess = _sessions.get(token or "")
+    if sess is None:
+        rec = _meta_get("Session", "token", token or "")
+        if rec and rec.get("expires_at", 0) > int(time.time()):
+            sess = {"email": rec["email"], "expires_at": rec["expires_at"]}
+            _sessions[token] = sess
     if not sess or sess["expires_at"] < int(time.time()):
         return None
-    acct = _accounts.get(sess["email"])
+    acct = _accounts.get(sess["email"]) or _hydrate_account(sess["email"])
     if not acct:
         return None
     out = _public_account(acct)
@@ -166,8 +284,14 @@ def logout(token):
     with _lock:
         _sessions.pop(token or "", None)
         _save()
+        _meta_del("Session", "token", token or "")
 
 
 def workspace_for_slug(slug):
     ws = _workspaces.get(slug or "")
+    if ws is None:
+        rec = _meta_get("Workspace", "slug", slug or "")
+        if rec:
+            _workspaces[slug] = rec
+            ws = rec
     return _public_workspace(ws) if ws else None
