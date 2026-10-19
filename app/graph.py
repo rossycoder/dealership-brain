@@ -145,8 +145,38 @@ def _get_tenant_memory_graph(slug):
     if g is None:
         from app.memory_graph import MemoryGraph
         g = MemoryGraph(seed_demo=False)
+        # Restore the tenant's saved graph from the persistent store
+        # (survives serverless cold starts when a store is configured).
+        try:
+            from app import store as _S
+            s = _S.get_store()
+            if s is not None:
+                snap = s.get("TenantGraph", "slug", slug)
+                if snap:
+                    g.restore(snap)
+        except Exception:
+            pass
         _tenant_memory_graphs[slug] = g
     return g
+
+
+def persist_tenant_graph(slug):
+    """Write a tenant's in-memory graph back to the persistent store.
+    Called after write requests (see app.main middleware). No-op for the
+    demo workspace, for FalkorDB-backed tenants (already durable), and
+    when no store is configured. Best-effort by design."""
+    if not slug or slug == "demo":
+        return
+    g = _tenant_memory_graphs.get(slug)
+    if g is None:
+        return
+    try:
+        from app import store as _S
+        s = _S.get_store()
+        if s is not None:
+            s.put("TenantGraph", "slug", slug, g.snapshot())
+    except Exception:
+        pass
 
 
 def get_tenant_graph(slug):

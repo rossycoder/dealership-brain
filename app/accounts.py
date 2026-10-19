@@ -5,10 +5,13 @@ workspace in this MVP. Passwords are PBKDF2-hashed (stdlib only — no new
 dependencies). Sessions are opaque bearer tokens kept server-side.
 
 Storage: in-memory dicts, mirrored best-effort to a JSON file so accounts
-survive restarts where the filesystem is writable (local / embedded mode).
-On serverless (Vercel) the mirror lives in /tmp and is per-instance, so
-accounts there are demo-grade until a persistent FalkorDB (FALKOR_HOST)
-is configured. /api/status reports the persistence mode honestly.
+survive restarts where the filesystem is writable (local / embedded mode),
+AND mirrored write-through to an external persistent store when one is
+configured (app.store: Upstash Redis via Vercel's one-click integration,
+a Redis URL, or a FalkorDB "saas_meta" graph via FALKOR_HOST). With a
+store, signups survive serverless cold starts and are shared across
+instances; without one, accounts on Vercel are demo-grade.
+/api/status reports the persistence mode honestly.
 """
 import hashlib
 import json
@@ -50,10 +53,12 @@ def _load():
         _sessions = data.get("sessions", {})
     except Exception:
         pass
-    # The persistent FalkorDB mirror wins over the local file cache — it is
+    # The persistent store mirror wins over the local file cache — it is
     # shared across instances and survives cold starts.
     for rec in _meta_all("Account"):
-        if rec.get("email"):
+        # Shape guard: only a real account record may land here (a foreign
+        # record that merely carries an email field must never poison login).
+        if rec.get("email") and rec.get("pass_hash"):
             _accounts[rec["email"]] = rec
     for rec in _meta_all("Workspace"):
         if rec.get("slug"):
@@ -75,80 +80,64 @@ def _save():
         pass
 
 
-# --- Persistent mirror in FalkorDB (when a real server is configured) -------
-# Accounts/workspaces/sessions are ALSO written to a dedicated "saas_meta"
-# graph on the real FalkorDB (FalkorDB Cloud or local embedded), so signups
-# survive serverless cold starts and are shared across instances. In pure
-# memory mode there is no server: the mirror is skipped and behaviour is the
-# demo-grade in-memory store. Each record is one JSON `data` property, so no
-# Cypher escaping issues can occur.
-_meta_graph = None
-_meta_tried = False
-
-
-def _meta():
-    global _meta_graph, _meta_tried
-    if _meta_graph is not None:
-        return _meta_graph
-    if _meta_tried:
-        return None
-    _meta_tried = True
-    try:
-        from app import graph as G
-        db, mode = G.get_db()
-        if mode == "memory":
-            return None
-        _meta_graph = db.select_graph("saas_meta")
-    except Exception:
-        _meta_graph = None
-    return _meta_graph
+# --- Persistent mirror (external store, when configured) --------------------
+# Accounts/workspaces/sessions are ALSO written to the store from app.store
+# (Upstash Redis / Redis URL / FalkorDB "saas_meta" graph), so signups
+# survive serverless cold starts and are shared across instances. With no
+# store configured the mirror is skipped and behaviour is the demo-grade
+# in-memory store. Records are single JSON documents, so no escaping issues
+# can occur on any backend.
+from app import store as _store_mod
 
 
 def _meta_put(label, key_name, key_val, record):
-    g = _meta()
-    if g is None:
+    s = _store_mod.get_store()
+    if s is None:
         return
     try:
-        g.query(f"MERGE (n:{label} {{{key_name}: $k}}) SET n.data = $d",
-                {"k": key_val, "d": json.dumps(record)})
+        s.put(label, key_name, key_val, record)
     except Exception:
         pass
 
 
 def _meta_get(label, key_name, key_val):
-    g = _meta()
-    if g is None:
+    s = _store_mod.get_store()
+    if s is None:
         return None
     try:
-        res = g.query(f"MATCH (n:{label} {{{key_name}: $k}}) RETURN n.data",
-                      {"k": key_val})
-        if res.result_set:
-            return json.loads(res.result_set[0][0])
+        return s.get(label, key_name, key_val)
     except Exception:
-        pass
-    return None
+        return None
 
 
 def _meta_del(label, key_name, key_val):
-    g = _meta()
-    if g is None:
+    s = _store_mod.get_store()
+    if s is None:
         return
     try:
-        g.query(f"MATCH (n:{label} {{{key_name}: $k}}) DETACH DELETE n",
-                {"k": key_val})
+        s.delete(label, key_name, key_val)
     except Exception:
         pass
 
 
 def _meta_all(label):
-    g = _meta()
-    if g is None:
+    s = _store_mod.get_store()
+    if s is None:
         return []
     try:
-        res = g.query(f"MATCH (n:{label}) RETURN n.data")
-        return [json.loads(r[0]) for r in res.result_set]
+        return s.all(label)
     except Exception:
         return []
+
+
+def store_name():
+    """'upstash-redis' | 'redis' | 'falkordb' | 'memory' (for /api/status)."""
+    return _store_mod.store_name()
+
+
+def persistence_mode():
+    return ("persistent" if _store_mod.get_store() is not None
+            else "in-memory (resets on cold start)")
 
 
 def _hydrate_account(email):

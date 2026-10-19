@@ -660,6 +660,28 @@ class MemoryGraph:
         self._add_rel(nid, t, "REPORTED")
         return tid
 
+    # -- snapshot / restore (SaaS tenant persistence) --------------------------
+
+    def snapshot(self):
+        """Whole graph state as a JSON-safe dict (node ids become str keys)."""
+        return {"nodes": self._nodes, "rels": self._rels,
+                "next_id": self._next_id}
+
+    def restore(self, data):
+        """Load a snapshot() dict back (node id keys return to int)."""
+        if not data:
+            return
+        try:
+            self._nodes = {int(k): {"labels": list(v.get("labels") or []),
+                                    "props": dict(v.get("props") or {})}
+                           for k, v in (data.get("nodes") or {}).items()}
+            self._rels = [{"from": r["from"], "to": r["to"], "type": r["type"]}
+                          for r in (data.get("rels") or [])]
+            self._next_id = int(data.get("next_id") or
+                                (max(self._nodes) + 1 if self._nodes else 1))
+        except Exception:
+            pass  # a corrupt snapshot must never break the tenant
+
     def stats(self):
         counts = {}
         for _, n in self._nodes.items():

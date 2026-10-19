@@ -47,8 +47,8 @@ class _TenantMiddleware:
         self.app = asgi_app
 
     async def __call__(self, scope, receive, send):
+        slug = "demo"
         if scope.get("type") == "http":
-            slug = "demo"
             try:
                 headers = dict(scope.get("headers") or [])
                 auth = headers.get(b"authorization", b"").decode("latin1")
@@ -60,6 +60,14 @@ class _TenantMiddleware:
                 slug = "demo"
             _tenant_var.set(slug)
         await self.app(scope, receive, send)
+        # Persist the tenant's workspace graph after any write request, so
+        # tenant data survives cold starts when a store is configured.
+        if (scope.get("type") == "http" and slug != "demo"
+                and scope.get("method") not in ("GET", "HEAD", "OPTIONS")):
+            try:
+                G.persist_tenant_graph(slug)
+            except Exception:
+                pass
 
 
 app.add_middleware(_TenantMiddleware)
@@ -122,7 +130,8 @@ def status():
         "workspace": _tenant_var.get(),
         "saas": {
             "tenancy": True,
-            "persistence": "persistent" if mode != "memory" else "in-memory (resets on cold start)",
+            "persistence": accounts.persistence_mode(),
+            "store": accounts.store_name(),
         },
         "llm_provider": llm.provider_name(),
         "demo_data": True,
