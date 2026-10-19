@@ -19,7 +19,7 @@
   --r:16px;
 }
 *{box-sizing:border-box}
-html,body{height:100%}
+html,body{height:100%;overflow-x:hidden;overflow-x:clip}
 body{
   margin:0; font-family:'Inter',system-ui,sans-serif; color:var(--txt);
   background:linear-gradient(180deg,#081026 0%, #060b1a 55%, #04060f 100%);
@@ -79,7 +79,7 @@ h1,h2,h3,.sg{font-family:'Space Grotesk',sans-serif}
 #chat{height:430px;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
 #chat::-webkit-scrollbar,.scroll::-webkit-scrollbar{width:8px}
 #chat::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
-.msg{max-width:82%;padding:11px 15px;border-radius:15px;font-size:14px;line-height:1.55;animation:pop .3s ease both;word-wrap:break-word}
+.msg{max-width:82%;padding:11px 15px;border-radius:15px;font-size:14px;line-height:1.55;animation:pop .3s ease both;word-wrap:break-word;overflow-wrap:anywhere}
 .msg.user{align-self:flex-end;background:var(--grad);color:#fff;border-bottom-right-radius:5px;
   box-shadow:0 6px 20px rgba(37,99,235,.3)}
 .msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:5px}
@@ -150,7 +150,8 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
   pointer-events:none;transition:.3s;z-index:99;max-width:90vw}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 /* ---------- markdown in chat ---------- */
-.msg.bot table{border-collapse:collapse;margin:10px 0;font-size:12.5px;width:100%}
+.tblwrap{overflow-x:auto;max-width:100%;margin:10px 0;-webkit-overflow-scrolling:touch}
+.msg.bot table{border-collapse:collapse;font-size:12.5px;width:auto;min-width:100%}
 .msg.bot th,.msg.bot td{border:1px solid var(--line);padding:7px 10px;text-align:left}
 .msg.bot th{background:rgba(59,130,246,.15);color:#bfdbfe;font-weight:700;font-size:11px;
   text-transform:uppercase;letter-spacing:.4px}
@@ -198,6 +199,8 @@ pre.trace{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:
 .formgrid input,.formgrid select{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;
   color:var(--txt);padding:9px 12px;font-size:12.5px;font-family:inherit;outline:none}
 .formgrid input:focus{border-color:var(--vio)}
+.formgrid div input{min-width:0}
+.composer input,.tools input,.tools select,.pane input,.pane select{min-width:0}
 .formgrid label{font-size:10.5px;font-weight:700;letter-spacing:.5px;color:var(--faint);text-transform:uppercase}
 /* service stage timeline */
 .stages{display:flex;gap:0;margin:10px 0;overflow-x:auto}
@@ -284,7 +287,7 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
   .card-h{padding:12px 14px}
   #chat{height:44vh;height:44dvh;min-height:280px;padding:14px 12px;gap:10px}
   .msg{max-width:93%;font-size:13.5px;padding:10px 13px;border-radius:13px}
-  .msg.bot table{display:block;overflow-x:auto;font-size:11.5px;max-width:100%}
+  .msg.bot table{font-size:11.5px}
   .msg.bot th,.msg.bot td{padding:6px 8px}
   .chips{padding:0 12px 4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
   .chips::-webkit-scrollbar{display:none}
@@ -293,7 +296,10 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
   .idrow{flex-direction:column;gap:8px;margin-bottom:8px}
   .field label{position:static;background:none;padding:0;display:block;margin-bottom:4px}
   .field input,#msg,.formgrid input,.formgrid select,select,input[type="date"]{font-size:16px}
-  .sendrow{gap:8px}
+  .sendrow{gap:8px;flex-wrap:wrap}
+  .sendrow #msg{flex:1 1 100%}
+  .sendrow #sendBtn{flex:1}
+  .tabs,.chips,.roleswitch{-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent);mask-image:linear-gradient(90deg,#000 92%,transparent)}
   #msg{padding:12px 14px;border-radius:12px}
   .btn{padding:12px 17px;font-size:13.5px;border-radius:12px}
   .btn.mic{padding:12px 13px}
@@ -588,12 +594,12 @@ function md2html(src){
     // markdown table: header row + separator row (|---|---|)
     if(/^\s*\|.*\|\s*$/.test(line)&&i+1<lines.length&&/^\s*\|[\s:|-]+\|\s*$/.test(lines[i+1])){
       const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>inline(c.trim()));
-      html+='<table><thead><tr>'+cells(line).map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>';
+      html+='<div class="tblwrap"><table><thead><tr>'+cells(line).map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>';
       i+=2;
       while(i<lines.length&&/^\s*\|.*\|\s*$/.test(lines[i])){
         html+='<tr>'+cells(lines[i]).map(c=>'<td>'+c+'</td>').join('')+'</tr>';i++;
       }
-      html+='</tbody></table>';continue;
+      html+='</tbody></table></div>';continue;
     }
     // bullet list
     if(/^\s*[-*]\s+/.test(line)){
