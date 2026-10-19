@@ -26,13 +26,17 @@ UI** ("Start free trial") and gets its **own private workspace**:
 - **Trial & pricing** — 14-day free trial, no card. Plans: Care $600/mo,
   Growth $1,200/mo, one-time setup $1,500 (see the in-app Pricing view).
   Activation is manual for now.
-- **Persistence note** — with a real FalkorDB (`FALKOR_HOST`, e.g. FalkorDB
-  Cloud) workspace data AND accounts persist: accounts/workspaces/sessions
-  mirror into a dedicated `saas_meta` graph (verified locally: signup →
-  server restart with an empty local cache → login, session and tenant data
-  all survive). On Vercel's in-memory fallback (no `FALKOR_HOST` set) data
-  resets on cold start; `/api/status` reports the mode honestly
-  (`saas.persistence`).
+- **Persistence note** — SaaS data (accounts, workspaces, sessions and each
+  tenant's workspace graph) persists when a store is configured
+  (`app/store.py`), in preference order: **Upstash Redis** via Vercel's
+  one-click Marketplace integration (`UPSTASH_REDIS_REST_URL/TOKEN` —
+  Vercel provisions the credentials itself, nobody types a password), a
+  Redis URL (`REDIS_URL`/`KV_URL`), or a **FalkorDB** `saas_meta` graph
+  (`FALKOR_HOST`, e.g. FalkorDB Cloud). Verified locally on every backend:
+  signup → full process restart with an empty local cache → old session
+  token still valid, login works, tenant data restored. With no store
+  configured, data lives in memory and resets on cold start; `/api/status`
+  reports the mode honestly (`saas.persistence` + `saas.store`).
 
 ## Why this can win (3 tracks, 1 project)
 

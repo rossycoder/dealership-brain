@@ -5,6 +5,10 @@ python-dotenv>=1.0
 httpx>=0.27
 mangum>=0.19
 falkordb>=1.0
+redis>=5.0
+# ^ redis-py: SaaS persistence via a Redis URL when one is configured
+# (also a transitive dependency of the FalkorDB client). The Upstash REST
+# path used with Vercel's one-click integration needs only httpx (above).
 # ^ FalkorDB CLIENT only (pure Python; talks to an external FalkorDB server —
 # e.g. FalkorDB Cloud — when FALKOR_HOST is set). falkordblite stays EXCLUDED:
 # its redislite native binaries add ~70MB and can never run on Vercel
