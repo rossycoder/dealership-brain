@@ -261,6 +261,56 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
 .plan .price span{font-size:12px;color:var(--dim);font-weight:400}
 .plan ul{margin:0 0 12px;padding-left:16px;font-size:12px;color:var(--dim)}
 .plan ul li{margin-bottom:4px}
+/* ================= MARKETING LAYER (additive, 2026-10-23) ================= */
+.mkt-wrap{max-width:1240px;margin:0 auto;padding:0 20px 6px;position:relative;z-index:1}
+.mkt-hero{position:relative;margin:2px 0 16px;padding:30px 30px 24px;border-radius:20px;
+  border:1px solid rgba(59,130,246,.35);overflow:hidden;
+  background:linear-gradient(135deg, rgba(37,99,235,.16), rgba(34,211,238,.06) 55%, rgba(255,255,255,.03));
+  backdrop-filter:blur(12px);animation:rise .6s ease both}
+.mkt-x{position:absolute;top:10px;right:12px;background:none;border:none;color:var(--dim);
+  font-size:16px;cursor:pointer;padding:8px}
+.mkt-x:hover{color:var(--txt)}
+.mkt-eyebrow{font-size:11.5px;font-weight:700;letter-spacing:1.6px;color:var(--cy);text-transform:uppercase;margin:0 0 12px}
+.mkt-hero h2{margin:0;font-size:clamp(26px,4.2vw,42px);line-height:1.14;letter-spacing:.2px;max-width:820px}
+.mkt-hero h2 .hl{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.mkt-sub{margin:14px 0 0;color:var(--dim);font-size:15.5px;line-height:1.65;max-width:760px}
+.mkt-sub b{color:var(--txt)}
+.mkt-ctas{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.mkt-ctas .btn{text-decoration:none;display:inline-flex;align-items:center}
+.mkt-ctas .btn.ghost{text-decoration:none}
+.mkt-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.mkt-chip{font-size:12px;font-weight:600;padding:7px 13px;border-radius:999px;color:#dbeafe;
+  background:rgba(6,11,26,.45);border:1px solid rgba(147,197,253,.28)}
+.mkt-sec{margin:18px 0 4px;padding:24px 26px;border-radius:20px;border:1px solid var(--line);
+  background:var(--panel);backdrop-filter:blur(12px);animation:rise .6s .1s ease both}
+.mkt-sec h2{margin:0 0 8px;font-size:clamp(20px,3vw,28px);line-height:1.25}
+.mkt-sec .lede{margin:0 0 18px;color:var(--dim);font-size:14.5px;line-height:1.6;max-width:780px}
+.mkt-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mkt-col{border:1px solid var(--line);border-radius:16px;padding:18px;background:rgba(255,255,255,.02)}
+.mkt-col.bad{border-color:rgba(248,113,113,.3)}
+.mkt-col.good{border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.04)}
+.mkt-col h3{margin:0 0 10px;font-size:14px;letter-spacing:.4px;text-transform:uppercase}
+.mkt-col.bad h3{color:#fca5a5}.mkt-col.good h3{color:#6ee7b7}
+.mkt-col ul{margin:0;padding-left:18px;color:var(--dim);font-size:13.5px;line-height:1.65}
+.mkt-col ul li{margin-bottom:6px}
+.mkt-col ul b{color:var(--txt)}
+.mkt-minis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+.mkt-mini{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:rgba(255,255,255,.02)}
+.mkt-mini h3{margin:0 0 7px;font-size:14.5px}
+.mkt-mini p{margin:0;color:var(--dim);font-size:13px;line-height:1.6}
+.mkt-note{margin-top:16px;font-size:13px;color:var(--dim);line-height:1.6}
+.mkt-note b{color:var(--txt)}
+.mkt-foot{margin:16px 0 26px;padding:16px 20px;border-radius:16px;border:1px solid var(--line);
+  background:var(--panel);color:var(--dim);font-size:13px;line-height:1.6;display:flex;flex-wrap:wrap;
+  gap:8px 18px;align-items:center;justify-content:space-between}
+.mkt-foot a{color:#93c5fd}
+@media(max-width:720px){
+  .mkt-wrap{padding:0 12px 4px}
+  .mkt-hero{padding:22px 18px 18px;border-radius:16px}
+  .mkt-sec{padding:18px 16px;border-radius:16px}
+  .mkt-cols,.mkt-minis{grid-template-columns:1fr}
+  .mkt-ctas .btn{flex:1;justify-content:center}
+}
 /* ================= MOBILE RESPONSIVE ================= */
 @media(max-width:960px){
   #chat{height:48vh;height:48dvh;min-height:320px}
@@ -428,6 +478,25 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
   </div>
 </div>
 <div class="wrap">
+  <!-- ===== Marketing hero (additive, 2026-10-23) ===== -->
+  <section class="mkt-hero" id="mktHero">
+    <button class="mkt-x" id="mktClose" type="button" onclick="mktHide()" aria-label="Hide intro" title="Hide intro">✕</button>
+    <p class="mkt-eyebrow">For car dealerships · by GearShift Digital</p>
+    <h2>Your team makes promises. <span class="hl">This system makes sure they&rsquo;re kept.</span></h2>
+    <p class="mkt-sub">Dealership Brain answers every lead <b>24/7</b>, follows up on its own, and remembers every customer — and it does the one thing the big CRM platforms don&rsquo;t: it captures every <b>&ldquo;I&rsquo;ll call you back at 3&rdquo;</b> promise straight from the conversation, watches the clock, and <b>escalates it to the manager before it slips</b>. A missed callback is a deal your competitor closes.</p>
+    <div class="mkt-ctas">
+      <button class="btn" type="button" onclick="mktExplore()">▶ Explore the live demo</button>
+      <button class="btn" type="button" onclick="openAuth('signup')">Start free trial — no card</button>
+      <a class="btn ghost" href="#mktPricing">See pricing ↓</a>
+    </div>
+    <div class="mkt-chips">
+      <span class="mkt-chip">🔓 This page IS the live demo — no demo call, no signup just to look</span>
+      <span class="mkt-chip">🤝 Promise tracking + SLA escalation</span>
+      <span class="mkt-chip">🗓️ 14-day free trial · no card needed</span>
+      <span class="mkt-chip">🔒 Your own private workspace — no other dealership sees your data</span>
+    </div>
+  </section>
+
   <div class="top">
     <div class="logo">
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
@@ -446,6 +515,7 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
   <div class="saasbar">
     <span class="wsbadge" id="wsBadge">🏢 Demo workspace: Velocity Motors</span>
     <button class="rolebtn" type="button" onclick="openPricing()">💲 Pricing</button>
+    <button class="rolebtn" type="button" id="btnIntro" onclick="mktShow()">ℹ️ What is this?</button>
     <button class="rolebtn" type="button" id="btnLogin" onclick="openAuth('login')">Login</button>
     <button class="rolebtn on" type="button" id="btnSignup" onclick="openAuth('signup')">Start free trial</button>
     <button class="rolebtn" type="button" id="btnLogout" style="display:none" onclick="saasLogout()">Logout</button>
@@ -534,6 +604,64 @@ select:focus,input[type="date"]:focus{border-color:var(--vio);outline:none}
     </div>
   </div>
 </div>
+<!-- ===== Marketing sections (additive, 2026-10-23) ===== -->
+<div class="mkt-wrap">
+  <section class="mkt-sec" id="mktPromise">
+    <p class="mkt-eyebrow">The differentiator</p>
+    <h2>Everybody answers leads. Nobody tracks the promises your own team makes.</h2>
+    <p class="lede">CRMs log calls after the fact — a story, not a record. Dealership Brain captures the promise itself, from the actual conversation, with a timestamp — then makes sure it happens.</p>
+    <div class="mkt-cols">
+      <div class="mkt-col bad">
+        <h3>✗ The old way</h3>
+        <ul>
+          <li>A rep says <b>&ldquo;I&rsquo;ll call you back at 3&rdquo;</b> — the promise lives in his memory, or on a sticky note.</li>
+          <li>The floor gets busy. Nobody is watching that promise.</li>
+          <li>It slips — quietly. No alert, no record.</li>
+          <li>The customer buys from <b>the dealership that called back</b>.</li>
+        </ul>
+      </div>
+      <div class="mkt-col good">
+        <h3>✓ With Dealership Brain</h3>
+        <ul>
+          <li>Every promise is <b>captured from the real conversation</b>, with a timestamp — not typed in afterwards.</li>
+          <li><b>Promise Watch</b> tracks the deadline: a reminder first, then an escalation to the manager.</li>
+          <li>The escalation carries a <b>recovery step</b> — a ready draft to win the customer back, not just a scolding.</li>
+          <li>If a chat promise and a later phone promise ever conflict, <b>both stay on record</b> — the newest never silently erases the older one.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="mkt-minis">
+      <div class="mkt-mini"><h3>📞 Callback SLA</h3><p>Every callback gets a deadline and an owner. Breaches surface in the alert log before they cost you a deal — try the Callback SLA tool in the demo above.</p></div>
+      <div class="mkt-mini"><h3>🧠 It remembers</h3><p>Customers, vehicles, service history and past promises live in one memory graph — and the brain recalls them in the next conversation, like your best salesperson does.</p></div>
+      <div class="mkt-mini"><h3>🔒 Your own workspace</h3><p>Sign up and your dealership gets a private workspace with its own data. No shared CRM, no other dealership — not even us — browsing your customers.</p></div>
+    </div>
+    <p class="mkt-note">See it work: in the live demo above, open <b>🤝 Promise tracker</b> (Manager tools) — or click here: <button class="mini" type="button" onclick="showPromises();window.scrollTo({top:0,behavior:'smooth'})">🤝 Open the Promise Tracker</button></p>
+  </section>
+
+  <section class="mkt-sec" id="mktPricing">
+    <p class="mkt-eyebrow">Pricing</p>
+    <h2>Pricing on the page — not behind a sales call.</h2>
+    <p class="lede">Most dealership AI makes you book a demo before it will tell you a price. Ours is right here, and the demo above is live and free to explore.</p>
+    <div class="plans">
+      <div class="plan"><h4>Free Trial</h4><div class="price">$0 <span>14 days</span></div>
+        <ul><li>All features unlocked</li><li>Your own private workspace</li><li>No card needed</li></ul>
+        <button class="btn" type="button" onclick="openAuth('signup')">Start free</button></div>
+      <div class="plan hot"><h4>Care</h4><div class="price">$600 <span>/month</span></div>
+        <ul><li>Everything in Trial</li><li>Callback SLA + Promise Watch agents</li><li>Staff leaderboard &amp; alert log</li><li>Email support</li></ul>
+        <button class="btn" type="button" onclick="openAuth('signup')">Start with trial</button></div>
+      <div class="plan"><h4>Growth</h4><div class="price">$1,200 <span>/month</span></div>
+        <ul><li>Everything in Care</li><li>Smart Match + follow-up agent</li><li>Priority support</li><li>Monthly performance review</li></ul>
+        <button class="btn" type="button" onclick="openAuth('signup')">Start with trial</button></div>
+    </div>
+    <p class="mkt-note"><b>One-time setup: $1,500</b> — done-for-you onboarding: we set up your inventory and your team. Activation is manual for now: start the trial and we arrange payment with you personally — <b>no card needed to start</b>. For comparison, full AI follow-up at the established platforms starts around <b>$1,499–$1,995/month</b> — and you still have to book a call to hear it.</p>
+  </section>
+
+  <div class="mkt-foot" id="mktFoot">
+    <span><b>Dealership Brain</b> by <b>GearShift Digital</b> — a problem-solving agency for car dealerships. The demo workspace above (Velocity Motors) uses fictional data; the engine and agents are 100% real.</span>
+    <span><a href="#mktPricing">Pricing</a> · <a href="#" onclick="openAuth('signup');return false;">Start free trial</a> · <a href="#" onclick="mktShow();return false;">What is this?</a></span>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1466,6 +1594,33 @@ function openPricing(){ document.getElementById('pricingModal').style.display = 
 function closePricing(){ document.getElementById('pricingModal').style.display = 'none'; }
 
 document.addEventListener('DOMContentLoaded', saasInit);
+</script>
+
+<script>
+/* Marketing layer behaviour (additive, 2026-10-23) — only shows/hides the
+   intro hero. Logged-in users, and visitors who dismissed the hero before,
+   skip straight to the app. Nothing here touches app state or APIs. */
+function mktHide(){
+  var h = document.getElementById('mktHero'); if (h) h.style.display = 'none';
+  try { localStorage.setItem('db_mkt_hide', '1'); } catch(e) {}
+}
+function mktExplore(){
+  var h = document.getElementById('mktHero'); if (h) h.style.display = 'none';
+  var d = document.getElementById('demoNotice');
+  if (d) d.scrollIntoView({behavior: 'smooth'});
+}
+function mktShow(){
+  try { localStorage.removeItem('db_mkt_hide'); } catch(e) {}
+  var h = document.getElementById('mktHero');
+  if (h) { h.style.display = ''; h.scrollIntoView({behavior: 'smooth'}); }
+}
+document.addEventListener('DOMContentLoaded', function(){
+  try {
+    if (localStorage.getItem('db_token') || localStorage.getItem('db_mkt_hide') === '1') {
+      var h = document.getElementById('mktHero'); if (h) h.style.display = 'none';
+    }
+  } catch(e) {}
+});
 </script>
 </body>
 </html>
